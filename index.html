@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Limelight Simulator</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>Limelight Simulator</h1>
+  <p class="sub">Pollen tracking, run away from the robot. The detector and the
+  pursuit controller here are ports of what runs on the camera and the hub.</p>
+</header>
+
+<main>
+  <section class="views">
+    <figure>
+      <figcaption>Camera view <span class="hint">what the Limelight sees</span></figcaption>
+      <canvas id="cam" width="640" height="480"></canvas>
+    </figure>
+    <figure>
+      <figcaption>Mask <span class="hint">after threshold, close, open</span></figcaption>
+      <canvas id="mask" width="320" height="240"></canvas>
+    </figure>
+    <figure>
+      <figcaption>Field <span class="hint">click to move a ball, shift-click to add</span></figcaption>
+      <canvas id="field" width="520" height="520"></canvas>
+    </figure>
+  </section>
+
+  <section class="side">
+    <div class="panel">
+      <div class="row">
+        <button id="run" class="primary">Start</button>
+        <button id="reset">Reset</button>
+      </div>
+      <div class="row">
+        <label><input type="checkbox" id="chase" checked> chase the ball</label>
+        <label><input type="checkbox" id="gate"> size gate</label>
+      </div>
+      <label class="sel">Colour filter
+        <select id="wanted">
+          <option value="">any</option>
+          <option value="red">red</option>
+          <option value="blue">blue</option>
+          <option value="yellow">yellow</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="panel">
+      <h2>llpython</h2>
+      <table id="out"><tbody></tbody></table>
+    </div>
+
+    <div class="panel">
+      <h2>Mounting</h2>
+      <div id="mount"></div>
+      <p class="note" id="blind"></p>
+    </div>
+
+    <div class="panel">
+      <h2>Pursuit gains</h2>
+      <div id="gains"></div>
+    </div>
+  </section>
+</main>
+
+<script type="module" src="src/sim.js"></script>
+</body>
+</html>
