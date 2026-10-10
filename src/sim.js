@@ -4,9 +4,10 @@
 
 import { Geometry, CAMERAS, BALLS, setCamera, setBallDiameter } from "./geometry.js";
 import { renderCameraView, BALL_RGB } from "./render.js";
-import { detect, PROC_W } from "./detector.js";
+import { detect, PROC_W, RING_FREE_MIN } from "./detector.js";
 import { BallPursuit, defaultParams } from "./pursuit.js";
 import { Robot, defaultChassis } from "./robot.js";
+import { applySensor, defaultSensor } from "./realism.js";
 
 const CAM_W = 640, CAM_H = 480;
 const FIELD_IN = 144;                      // 12 ft, drawn on a 520 px canvas
@@ -28,7 +29,9 @@ let balls = [
   { x: 46, y: 20, color: "red" },
 ];
 let tape = [{ from: [-60, -70], to: [120, -70], widthIn: 2 }];
-let running = false, lastT = 0, last = null;
+const sensor = defaultSensor();
+const detOpts = { ringFreeMin: RING_FREE_MIN };
+let running = false, lastT = 0, last = null, lastTurnRate = 0;
 
 // ------------------------------------------------------------------ loop
 
@@ -51,12 +54,18 @@ function tick(now) {
   };
   renderCameraView(cam, geom, world);
 
+  // Sensor effects go on before the detector sees anything, because on the
+  // real robot they are part of the image, not an afterthought.
+  sensor.motionBlur = document.getElementById("blur").checked;
   const image = cam.getImageData(0, 0, CAM_W, CAM_H);
+  applySensor(image, sensor, { turnRadPerSec: lastTurnRate }, geom.fx);
+  cam.putImageData(image, 0, 0);
   const det = detect(image, {
     camHeightIn: mount.heightIn,
     camPitchDeg: mount.pitchDeg,
     wantedColor: document.getElementById("wanted").value || null,
     sizeGate: document.getElementById("gate").checked,
+    ringFreeMin: detOpts.ringFreeMin,
   });
   last = det;
 
@@ -69,6 +78,7 @@ function tick(now) {
       : null;
     const o = pursuit.update(t, dt);
     robot.step(o, dt);
+    lastTurnRate = (o.turn * chassis.maxTurnDps * Math.PI) / 180;
     if (o.captured) {
       // Collect it: remove whatever is closest to the robot, then look again.
       const cm = robot.cameraPose();
@@ -218,6 +228,14 @@ ballSel.onchange = () => { setBallDiameter(parseFloat(ballSel.value)); updateBli
 
 document.getElementById("camnote").textContent = CAMERAS[camSel.value].note;
 
+const detHost = document.getElementById("detector");
+slider(detHost, "ring freedom required", detOpts, "ringFreeMin", 0.2, 0.95, 0.05);
+
+const sensorHost = document.getElementById("sensor");
+slider(sensorHost, "brightness (exposure x gain)", sensor, "brightness", 0.1, 2.0, 0.05, "x");
+slider(sensorHost, "sensor noise", sensor, "noise", 0, 40, 1);
+slider(sensorHost, "exposure time", sensor, "exposureSec", 0.002, 0.06, 0.001, " s");
+
 const mountHost = document.getElementById("mount");
 slider(mountHost, "lens height", mount, "heightIn", 4, 20, 0.1, " in");
 slider(mountHost, "pitch below horizontal", mount, "pitchDeg", 0, 45, 0.1, " deg");
@@ -273,6 +291,7 @@ const DEMOS = [
         { x: 46, y: 20, color: "red" },
       ];
       tape = [{ from: [-60, -70], to: [120, -70], widthIn: 2 }];
+      sensor.brightness = 1.0;
       params.kDriveMin = 0.10;
       params.blindApproachIn = 14;
     },
@@ -312,6 +331,36 @@ const DEMOS = [
     },
   },
   {
+    name: "Underexposed",
+    why: "Brightness at 0.45. Blue pollen is intrinsically darker than " +
+         "yellow, so it falls under the value floor first and disappears " +
+         "while yellow looks fine. This is exactly what happened on the " +
+         "robot: 10 balls found, almost no blue ones.",
+    apply: () => {
+      balls = [
+        { x: 30, y: -8, color: "blue" },
+        { x: 30, y: 8, color: "yellow" },
+      ];
+      tape = [];
+      sensor.brightness = 0.45;
+      params.kDriveMin = 0.10;
+      params.blindApproachIn = 14;
+    },
+  },
+  {
+    name: "Cardboard",
+    why: "A tan box on the floor. On real footage this read as yellow and " +
+         "became a phantom ball; the saturation floor of 150 is what keeps " +
+         "it out. Lower the brightness and watch the margin shrink.",
+    apply: () => {
+      balls = [{ x: 28, y: -10, color: "yellow" }];
+      tape = [{ from: [50, 4], to: [50, 40], widthIn: 14, rgb: [170, 140, 95] }];
+      sensor.brightness = 1.0;
+      params.kDriveMin = 0.10;
+      params.blindApproachIn = 14;
+    },
+  },
+  {
     name: "Crowded row",
     why: "Seven touching balls. A plain colour-blob finder merges these into " +
          "one shape with a meaningless centre; the distance transform splits " +
@@ -338,9 +387,19 @@ for (const d of DEMOS) {
     pursuit = new BallPursuit(params);
     document.getElementById("demonote").textContent = d.why;
     syncGainSliders();
+    syncSensorSliders();
     updateBlind();
   };
   demoHost.appendChild(b);
+}
+
+function syncSensorSliders() {
+  for (const el of document.querySelectorAll("#sensor .slider")) {
+    const key = el.dataset.key;
+    if (!key) continue;
+    el.querySelector("input").value = sensor[key];
+    el.querySelector("b").textContent = sensor[key];
+  }
 }
 
 /** Demos change gains behind the sliders' backs; put the sliders right. */

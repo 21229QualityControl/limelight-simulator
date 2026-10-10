@@ -12,11 +12,23 @@
 // Colours are chosen to land inside the detector's HSV windows; the test
 // suite asserts that rather than trusting it.
 
-/** Ball colours, picked to sit inside the detector's hue/saturation windows. */
+/**
+ * Ball colours.
+ *
+ * Hue and saturation sit inside the detector's windows. BRIGHTNESS is set
+ * from measurements of the real balls, and the ratios matter more than the
+ * absolute values: on a correctly exposed frame the real pollen read value
+ * 99 yellow, 61 red, 53 blue. Blue is by far the dimmest.
+ *
+ * That ratio is the whole reason the exposure bug happened -- underexpose
+ * slightly and blue drops below the value floor while yellow is still fine,
+ * so the robot sees only yellow balls and nobody can work out why. Rendering
+ * all three equally bright would hide it.
+ */
 export const BALL_RGB = {
-  red:    [205, 28, 32],
-  blue:   [28, 70, 205],
-  yellow: [232, 200, 30],
+  yellow: [232, 200, 30],   // V 232, the brightest
+  red:    [144, 20, 22],    // V 144, ~0.62 of yellow, matching the real ratio
+  blue:   [17, 43, 125],    // V 125, ~0.54 of yellow
 };
 
 const FLOOR_RGB = [108, 110, 112];   // grey tile, deliberately low saturation
@@ -61,11 +73,12 @@ function drawFloor(ctx, W, H) {
 }
 
 function drawTape(ctx, geom, tape) {
+  const col = tape.rgb || TAPE_RGB;
   // Project a run of points along the strip; width shrinks with distance, so
   // it cannot be stroked as one straight line.
   const steps = 48;
   const [f0, l0] = tape.from, [f1, l1] = tape.to;
-  ctx.fillStyle = rgb(TAPE_RGB);
+  ctx.fillStyle = rgb(col);
   for (let i = 0; i < steps; i++) {
     const a = i / steps, b = (i + 1) / steps;
     const pa = geom.project(f0 + (f1 - f0) * a, l0 + (l1 - l0) * a);
@@ -78,7 +91,7 @@ function drawTape(ctx, geom, tape) {
         Math.hypot(f0 + (f1 - f0) * a, l0 + (l1 - l0) * a, geom.h)
     );
     ctx.lineWidth = wpx;
-    ctx.strokeStyle = rgb(TAPE_RGB);
+    ctx.strokeStyle = rgb(col);
     ctx.beginPath();
     ctx.moveTo(pa.u, pa.v);
     ctx.lineTo(pb.u, pb.v);

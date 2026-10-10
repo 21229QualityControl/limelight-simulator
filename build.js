@@ -11,17 +11,29 @@
 // The module graph here is small and acyclic, so inlining in dependency
 // order and stripping import/export is enough; no real bundler needed.
 
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
 
 const ORDER = [
   "src/geometry.js",
   "src/thresholds.js",
   "src/render.js",
+  "src/realism.js",
   "src/detector.js",
   "src/pursuit.js",
   "src/robot.js",
   "src/sim.js",
 ];
+
+// Forgetting to list a new module here produced a bundle that threw
+// "X is not defined" only at runtime, in the browser, with the page
+// half-built. Fail loudly at build time instead.
+const onDisk = readdirSync("src").filter((f) => f.endsWith(".js")).map((f) => "src/" + f);
+const missing = onDisk.filter((f) => !ORDER.includes(f));
+if (missing.length) {
+  console.error("build.js: these modules exist but are not in ORDER:\n  " +
+                missing.join("\n  ") + "\nAdd them in dependency order.");
+  process.exit(1);
+}
 
 const strip = (src, file) =>
   "\n// ===== " + file + " " + "=".repeat(Math.max(0, 60 - file.length)) + "\n" +

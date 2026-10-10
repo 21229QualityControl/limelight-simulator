@@ -12,7 +12,7 @@ const t = {
     ]),
 };
 
-const suites = ["./geometry.test.js", "./render.test.js", "./detector.test.js", "./pursuit.test.js", "./robot.test.js"];
+const suites = ["./geometry.test.js", "./render.test.js", "./detector.test.js", "./pursuit.test.js", "./robot.test.js", "./realism.test.js"];
 for (const s of suites) (await import(s)).default(t);
 
 let failed = 0;

@@ -109,13 +109,38 @@ been tested anywhere until now:
 Both pass. That is evidence the algorithm is sound, not proof it survives a
 real field.
 
-## What it cannot tell you
+## Camera realism
 
-Simulated pixels are clean. Every failure seen on real hardware so far —
-motion blur, cardboard reading as yellow, the camera browning out on USB
-power, an uncalibrated tilt angle poisoning every range — is invisible here.
-This is for geometry and control tuning. Robustness has to be proven on the
-robot.
+`src/realism.js` applies exposure, gain, sensor noise and motion blur to the
+rendered frame before the detector sees it, in the order a camera does:
+the image smears during the exposure, then exposure and gain scale it, then
+noise is added on readout.
+
+The ball colours are not arbitrary. Real pollen measured 99 yellow, 61 red,
+53 blue on a correctly exposed frame, and those ratios are reproduced,
+because blue being the dimmest is the whole reason the exposure bug
+happened. Drag brightness down and blue drops out first, then red, then
+yellow — the simulator loses them at 0.45, 0.40 and 0.25.
+
+### Three things it has already told us
+
+- **Motion blur is not the problem it was assumed to be.** A ball at 60 in
+  survives up to about 4 rad/s and is only lost past 6. A search sweep is
+  roughly 1 rad/s, so at realistic FTC turn rates blur does not break
+  detection. A ball at 30 in survives anything.
+- **Tape running directly away from the camera is ball-width up close**, and
+  generates phantom balls along its length. This had not been considered.
+- **The ring test is a trade.** Raising `ringFreeMin` to 0.80 rejects that
+  tape completely and still splits touching balls, but loses a close ball
+  under heavy blur. The default stays permissive, because the blur tolerance
+  is proven and the tape case has only been seen in simulation. The slider is
+  in the UI; try "Ball on tape" at 0.45 and again at 0.80.
+
+## What it still cannot tell you
+
+JPEG compression, real gym lighting, a camera that browns out on USB power,
+an uncalibrated tilt angle poisoning every range. Robustness has to be proven
+on the robot.
 
 Port targets live in `21229QualityControl/BioBuzzV1.1`, branch `ball-tracking`
 (`TeamCode/.../subsystems/LimelightVision.java`, `commands/BallPursuit.java`),

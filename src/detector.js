@@ -25,7 +25,21 @@ export const OPEN_R = 2;            // speckle-kill radius
 
 export const RING_SECTORS = 16;
 export const RING_SECTOR_FULL = 0.5;  // a sector this covered counts as blocked
-export const RING_FREE_MIN = 0.45;    // fraction of sectors that must be free
+// Fraction of ring sectors that must be free for a blob to count as a ball.
+//
+// This is a TRADE, measured in the simulator rather than guessed:
+//   0.45 (this default, and what the robot runs)
+//        tolerant. Survives heavy motion blur, but tape running directly
+//        away from the camera is ball-width up close and generates phantom
+//        balls along its length.
+//   0.80 rejects that tape completely, and still splits touching balls --
+//        but loses a close ball once the image smears badly.
+//
+// Left permissive because the blur tolerance is proven to matter and the
+// tape case has only been seen in simulation. Raise it if you actually have
+// tape pointing away from the robot. Changing it here means changing
+// RING_FREE_MIN in ball_snapscript.py too, or the two stop agreeing.
+export const RING_FREE_MIN = 0.45;
 
 export const SIZE_GATE_LO = 0.35;
 export const SIZE_GATE_HI = 3.0;
@@ -51,6 +65,7 @@ export function detect(image, opts = {}) {
     wantedColor = null,
     sizeGate = false,
     minR = MIN_R,
+    ringFreeMin = RING_FREE_MIN,
   } = opts;
 
   const small = downscale(image, PROC_W);
@@ -64,7 +79,7 @@ export function detect(image, opts = {}) {
   for (const color of colors) {
     const mask = buildMask(hsv, small.width, small.height, color);
     masks[color] = mask;
-    for (const c of peaks(mask, small.width, small.height, geom, minR, sizeGate)) {
+    for (const c of peaks(mask, small.width, small.height, geom, minR, sizeGate, ringFreeMin)) {
       const sol = geom.solve(c.u, c.v);
       if (sol === null || sol.rangeIn > MAX_RANGE_IN) continue;
       const { txDeg, tyDeg } = geom.angles(c.u, c.v);
@@ -239,7 +254,7 @@ function distanceTransform(m, w, h) {
   return d;
 }
 
-function peaks(mask, w, h, geom, minR, gate) {
+function peaks(mask, w, h, geom, minR, gate, ringFreeMin = RING_FREE_MIN) {
   const dt = distanceTransform(mask, w, h);
   const work = Float32Array.from(dt);
   const found = [];
@@ -264,7 +279,7 @@ function peaks(mask, w, h, geom, minR, gate) {
       }
     }
 
-    const shape = shapeTest(mask, w, h, u, v, r);
+    const shape = shapeTest(mask, w, h, u, v, r, ringFreeMin);
     if (!shape) continue;
     found.push({ u, v, r, fill: shape.fill, sizeScore });
   }
@@ -288,7 +303,7 @@ function suppress(work, w, h, cu, cv, rad) {
  * large blob of the same colour. They differ in SHAPE. A ball has to be free
  * in most directions; a blob enclosed on every side fails.
  */
-function shapeTest(mask, w, h, cu, cv, r) {
+function shapeTest(mask, w, h, cu, cv, r, ringFreeMin = RING_FREE_MIN) {
   const R = Math.ceil(r * 1.7) + 1;
   const x0 = Math.max(0, cu - R), x1 = Math.min(w - 1, cu + R);
   const y0 = Math.max(0, cv - R), y1 = Math.min(h - 1, cv + R);
@@ -321,6 +336,6 @@ function shapeTest(mask, w, h, cu, cv, r) {
     used++;
     if (occupied[s] / total[s] < RING_SECTOR_FULL) free++;
   }
-  if (!used || free / used < RING_FREE_MIN) return null;
+  if (!used || free / used < ringFreeMin) return null;
   return { fill };
 }

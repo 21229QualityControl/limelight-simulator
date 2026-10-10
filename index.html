@@ -117,6 +117,22 @@
     </div>
 
     <div class="panel">
+      <h2>Camera realism</h2>
+      <div id="sensor"></div>
+      <label><input type="checkbox" id="blur" checked> motion blur</label>
+      <p class="note">Dim it and watch blue drop out before yellow. That is
+      the bug that cost the real robot most of its detections.</p>
+    </div>
+
+    <div class="panel">
+      <h2>Detector</h2>
+      <div id="detector"></div>
+      <p class="note">Ring freedom is a trade: higher rejects tape running
+      away from the camera, lower survives motion blur. Try "Ball on tape"
+      at 0.45 and again at 0.80.</p>
+    </div>
+
+    <div class="panel">
       <h2>Pursuit gains</h2>
       <div id="gains"></div>
     </div>
