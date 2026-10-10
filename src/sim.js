@@ -27,7 +27,7 @@ let balls = [
   { x: 34, y: -18, color: "blue" },
   { x: 46, y: 20, color: "red" },
 ];
-const tape = [{ from: [-60, -70], to: [120, -70], widthIn: 2 }];
+let tape = [{ from: [-60, -70], to: [120, -70], widthIn: 2 }];
 let running = false, lastT = 0, last = null;
 
 // ------------------------------------------------------------------ loop
@@ -185,6 +185,7 @@ function writeTelemetry(det) {
 function slider(host, label, obj, key, min, max, step, suffix = "") {
   const d = document.createElement("div");
   d.className = "slider";
+  d.dataset.key = key;
   d.innerHTML = `<div class="lab"><span>${label}</span><b>${obj[key]}${suffix}</b></div>`;
   const r = document.createElement("input");
   r.type = "range"; r.min = min; r.max = max; r.step = step; r.value = obj[key];
@@ -255,6 +256,102 @@ document.getElementById("reset").onclick = () => {
     { x: 46, y: 20, color: "red" },
   ];
 };
+
+// ------------------------------------------------------------- demos
+//
+// Each of these reproduces something that actually went wrong on the real
+// robot, which is more use to a newcomer than a list of sliders.
+
+const DEMOS = [
+  {
+    name: "Normal chase",
+    why: "Three balls on an open floor. It should collect all three.",
+    apply: () => {
+      balls = [
+        { x: 20, y: 6, color: "yellow" },
+        { x: 34, y: -18, color: "blue" },
+        { x: 46, y: 20, color: "red" },
+      ];
+      tape = [{ from: [-60, -70], to: [120, -70], widthIn: 2 }];
+      params.kDriveMin = 0.10;
+      params.blindApproachIn = 14;
+    },
+  },
+  {
+    name: "Stall bug",
+    why: "kDriveMin is 0. The proportional term dies under friction and the " +
+         "robot halts about ten inches short, with no way to notice. This is " +
+         "the bug the breakaway minimums fix.",
+    apply: () => {
+      balls = [{ x: 24, y: 0, color: "yellow" }];
+      params.kDriveMin = 0;
+      params.blindApproachIn = 0;      // no commit, so only the P term drives
+    },
+  },
+  {
+    name: "Commit too late",
+    why: "Commit distance is inside the blind zone, so the ball vanishes at " +
+         "the same instant the final run should begin. The robot never learns " +
+         "it got close. Watch the Mounting warning turn amber.",
+    apply: () => {
+      balls = [{ x: 30, y: 0, color: "yellow" }];
+      params.kDriveMin = 0.10;
+      params.blindApproachIn = 9;
+    },
+  },
+  {
+    name: "Ball on tape",
+    why: "A blue ball sitting on blue tape: the hardest case for the " +
+         "detector, and one that was never testable on the robot. The ring " +
+         "test should still find it.",
+    apply: () => {
+      balls = [{ x: 30, y: 0, color: "blue" }];
+      tape = [{ from: [-20, -3], to: [120, -3], widthIn: 2 }];
+      params.kDriveMin = 0.10;
+      params.blindApproachIn = 14;
+    },
+  },
+  {
+    name: "Crowded row",
+    why: "Seven touching balls. A plain colour-blob finder merges these into " +
+         "one shape with a meaningless centre; the distance transform splits " +
+         "them.",
+    apply: () => {
+      balls = [];
+      for (let i = -3; i <= 3; i++) {
+        balls.push({ x: 42, y: i * 4, color: i % 2 ? "yellow" : "blue" });
+      }
+      tape = [];
+      params.kDriveMin = 0.10;
+      params.blindApproachIn = 14;
+    },
+  },
+];
+
+const demoHost = document.getElementById("demos");
+for (const d of DEMOS) {
+  const b = document.createElement("button");
+  b.textContent = d.name;
+  b.onclick = () => {
+    d.apply();
+    robot = new Robot(chassis, { x: -40, y: 0, headingRad: 0 });
+    pursuit = new BallPursuit(params);
+    document.getElementById("demonote").textContent = d.why;
+    syncGainSliders();
+    updateBlind();
+  };
+  demoHost.appendChild(b);
+}
+
+/** Demos change gains behind the sliders' backs; put the sliders right. */
+function syncGainSliders() {
+  for (const el of document.querySelectorAll("#gains .slider")) {
+    const key = el.dataset.key;
+    if (!key) continue;
+    el.querySelector("input").value = params[key];
+    el.querySelector("b").textContent = params[key];
+  }
+}
 
 document.getElementById("field").addEventListener("click", (e) => {
   const r = e.target.getBoundingClientRect();

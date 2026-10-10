@@ -11,6 +11,44 @@
   <h1>Limelight Simulator</h1>
   <p class="sub">Pollen tracking, run away from the robot. The detector and the
   pursuit controller here are ports of what runs on the camera and the hub.</p>
+  <details id="explain">
+    <summary>What am I looking at?</summary>
+    <div class="explain-body">
+      <p>An FTC robot finding balls with a Limelight camera and driving to
+      them. Nothing is faked: the simulator draws what the camera would see,
+      then runs the <em>real</em> detection code over those pixels, and feeds
+      the result to the <em>real</em> chase controller.</p>
+
+      <h3>The three views</h3>
+      <ul>
+        <li><b>Camera view</b> — the robot's eye. White circles are
+        detections; the label is the range the camera thinks the ball is at.
+        The green cross is the image centre.</li>
+        <li><b>Mask</b> — the pixels that survived the colour filter, after
+        the holes in the balls are filled in. This is all the detector has to
+        work with. If a ball is missing here, it was lost at the colour stage,
+        not the shape stage.</li>
+        <li><b>Field</b> — top down. The grey square is the robot, the blue
+        wedge is what the camera can actually see. Note the wedge does not
+        start at the robot: there is a blind zone in front of it.</li>
+      </ul>
+
+      <h3>The one idea worth understanding</h3>
+      <p>A camera tilted at the floor <b>cannot see close to itself</b> — the
+      ball drops below the bottom of the frame. So the robot goes blind in the
+      final few inches, exactly when it most needs to know where the ball is.
+      That is why the controller <em>commits</em>: once a ball is close
+      enough, it stops looking, drives straight for a fixed time, and calls it
+      collected. The "Mounting" panel shows where your blind zone starts and
+      warns if you commit too late to survive it.</p>
+
+      <h3>What it cannot tell you</h3>
+      <p>These pixels are clean. No motion blur, no camera noise, no gym
+      lighting, no cardboard box that happens to look yellow. Every one of
+      those has broken the real robot. Passing here means the maths is right,
+      not that it survives a real field.</p>
+    </div>
+  </details>
 </header>
 
 <main>
@@ -47,6 +85,13 @@
           <option value="yellow">yellow</option>
         </select>
       </label>
+    </div>
+
+    <div class="panel">
+      <h2>Try this</h2>
+      <div class="row" id="demos"></div>
+      <p class="note" id="demonote">Each one sets up a situation that actually
+      broke the real robot.</p>
     </div>
 
     <div class="panel">

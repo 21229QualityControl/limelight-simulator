@@ -73,6 +73,23 @@ input[type=range] { width: 100%; }
 .note { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
 .good { color: var(--ok); } .bad { color: var(--warn); }
 
+details#explain {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 10px; padding: 10px 14px; margin-top: 12px; max-width: 80ch;
+}
+details#explain summary {
+  cursor: pointer; font-weight: 600; font-size: 14px; color: var(--accent);
+}
+.explain-body { font-size: 14px; color: var(--muted); }
+.explain-body h3 {
+  font-size: 12px; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--ink); margin: 14px 0 4px;
+}
+.explain-body b { color: var(--ink); }
+.explain-body ul { margin: 4px 0; padding-left: 20px; }
+.explain-body li { margin-bottom: 4px; }
+#demos button { font-size: 13px; padding: 5px 10px; }
+
 </style>
 </head>
 <body>
@@ -80,6 +97,44 @@ input[type=range] { width: 100%; }
   <h1>Limelight Simulator</h1>
   <p class="sub">Pollen tracking, run away from the robot. The detector and the
   pursuit controller here are ports of what runs on the camera and the hub.</p>
+  <details id="explain">
+    <summary>What am I looking at?</summary>
+    <div class="explain-body">
+      <p>An FTC robot finding balls with a Limelight camera and driving to
+      them. Nothing is faked: the simulator draws what the camera would see,
+      then runs the <em>real</em> detection code over those pixels, and feeds
+      the result to the <em>real</em> chase controller.</p>
+
+      <h3>The three views</h3>
+      <ul>
+        <li><b>Camera view</b> — the robot's eye. White circles are
+        detections; the label is the range the camera thinks the ball is at.
+        The green cross is the image centre.</li>
+        <li><b>Mask</b> — the pixels that survived the colour filter, after
+        the holes in the balls are filled in. This is all the detector has to
+        work with. If a ball is missing here, it was lost at the colour stage,
+        not the shape stage.</li>
+        <li><b>Field</b> — top down. The grey square is the robot, the blue
+        wedge is what the camera can actually see. Note the wedge does not
+        start at the robot: there is a blind zone in front of it.</li>
+      </ul>
+
+      <h3>The one idea worth understanding</h3>
+      <p>A camera tilted at the floor <b>cannot see close to itself</b> — the
+      ball drops below the bottom of the frame. So the robot goes blind in the
+      final few inches, exactly when it most needs to know where the ball is.
+      That is why the controller <em>commits</em>: once a ball is close
+      enough, it stops looking, drives straight for a fixed time, and calls it
+      collected. The "Mounting" panel shows where your blind zone starts and
+      warns if you commit too late to survive it.</p>
+
+      <h3>What it cannot tell you</h3>
+      <p>These pixels are clean. No motion blur, no camera noise, no gym
+      lighting, no cardboard box that happens to look yellow. Every one of
+      those has broken the real robot. Passing here means the maths is right,
+      not that it survives a real field.</p>
+    </div>
+  </details>
 </header>
 
 <main>
@@ -116,6 +171,13 @@ input[type=range] { width: 100%; }
           <option value="yellow">yellow</option>
         </select>
       </label>
+    </div>
+
+    <div class="panel">
+      <h2>Try this</h2>
+      <div class="row" id="demos"></div>
+      <p class="note" id="demonote">Each one sets up a situation that actually
+      broke the real robot.</p>
     </div>
 
     <div class="panel">
@@ -1110,7 +1172,7 @@ let balls = [
   { x: 34, y: -18, color: "blue" },
   { x: 46, y: 20, color: "red" },
 ];
-const tape = [{ from: [-60, -70], to: [120, -70], widthIn: 2 }];
+let tape = [{ from: [-60, -70], to: [120, -70], widthIn: 2 }];
 let running = false, lastT = 0, last = null;
 
 // ------------------------------------------------------------------ loop
@@ -1268,6 +1330,7 @@ function writeTelemetry(det) {
 function slider(host, label, obj, key, min, max, step, suffix = "") {
   const d = document.createElement("div");
   d.className = "slider";
+  d.dataset.key = key;
   d.innerHTML = `<div class="lab"><span>${label}</span><b>${obj[key]}${suffix}</b></div>`;
   const r = document.createElement("input");
   r.type = "range"; r.min = min; r.max = max; r.step = step; r.value = obj[key];
@@ -1338,6 +1401,102 @@ document.getElementById("reset").onclick = () => {
     { x: 46, y: 20, color: "red" },
   ];
 };
+
+// ------------------------------------------------------------- demos
+//
+// Each of these reproduces something that actually went wrong on the real
+// robot, which is more use to a newcomer than a list of sliders.
+
+const DEMOS = [
+  {
+    name: "Normal chase",
+    why: "Three balls on an open floor. It should collect all three.",
+    apply: () => {
+      balls = [
+        { x: 20, y: 6, color: "yellow" },
+        { x: 34, y: -18, color: "blue" },
+        { x: 46, y: 20, color: "red" },
+      ];
+      tape = [{ from: [-60, -70], to: [120, -70], widthIn: 2 }];
+      params.kDriveMin = 0.10;
+      params.blindApproachIn = 14;
+    },
+  },
+  {
+    name: "Stall bug",
+    why: "kDriveMin is 0. The proportional term dies under friction and the " +
+         "robot halts about ten inches short, with no way to notice. This is " +
+         "the bug the breakaway minimums fix.",
+    apply: () => {
+      balls = [{ x: 24, y: 0, color: "yellow" }];
+      params.kDriveMin = 0;
+      params.blindApproachIn = 0;      // no commit, so only the P term drives
+    },
+  },
+  {
+    name: "Commit too late",
+    why: "Commit distance is inside the blind zone, so the ball vanishes at " +
+         "the same instant the final run should begin. The robot never learns " +
+         "it got close. Watch the Mounting warning turn amber.",
+    apply: () => {
+      balls = [{ x: 30, y: 0, color: "yellow" }];
+      params.kDriveMin = 0.10;
+      params.blindApproachIn = 9;
+    },
+  },
+  {
+    name: "Ball on tape",
+    why: "A blue ball sitting on blue tape: the hardest case for the " +
+         "detector, and one that was never testable on the robot. The ring " +
+         "test should still find it.",
+    apply: () => {
+      balls = [{ x: 30, y: 0, color: "blue" }];
+      tape = [{ from: [-20, -3], to: [120, -3], widthIn: 2 }];
+      params.kDriveMin = 0.10;
+      params.blindApproachIn = 14;
+    },
+  },
+  {
+    name: "Crowded row",
+    why: "Seven touching balls. A plain colour-blob finder merges these into " +
+         "one shape with a meaningless centre; the distance transform splits " +
+         "them.",
+    apply: () => {
+      balls = [];
+      for (let i = -3; i <= 3; i++) {
+        balls.push({ x: 42, y: i * 4, color: i % 2 ? "yellow" : "blue" });
+      }
+      tape = [];
+      params.kDriveMin = 0.10;
+      params.blindApproachIn = 14;
+    },
+  },
+];
+
+const demoHost = document.getElementById("demos");
+for (const d of DEMOS) {
+  const b = document.createElement("button");
+  b.textContent = d.name;
+  b.onclick = () => {
+    d.apply();
+    robot = new Robot(chassis, { x: -40, y: 0, headingRad: 0 });
+    pursuit = new BallPursuit(params);
+    document.getElementById("demonote").textContent = d.why;
+    syncGainSliders();
+    updateBlind();
+  };
+  demoHost.appendChild(b);
+}
+
+/** Demos change gains behind the sliders' backs; put the sliders right. */
+function syncGainSliders() {
+  for (const el of document.querySelectorAll("#gains .slider")) {
+    const key = el.dataset.key;
+    if (!key) continue;
+    el.querySelector("input").value = params[key];
+    el.querySelector("b").textContent = params[key];
+  }
+}
 
 document.getElementById("field").addEventListener("click", (e) => {
   const r = e.target.getBoundingClientRect();
