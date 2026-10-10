@@ -1,5 +1,7 @@
 # Limelight Simulator
 
+**https://21229qualitycontrol.github.io/limelight-simulator/**
+
 A browser simulator for the BIOBUZZ pollen-tracking vision stack, so the
 detector and the pursuit controller can be tested and tuned without a robot.
 
@@ -27,7 +29,9 @@ geometry and control tuning, not for proving the detector is robust.
 
 ## Running
 
-**Easiest: open `dist/limelight-simulator.html`.** One file, no server, no
+**Easiest: use the link above.** Nothing to install.
+
+Offline, or to hand someone a copy: **open `dist/limelight-simulator.html`.** One file, no server, no
 install, works offline. Double-click it, or email it to someone.
 
 That file exists because browsers refuse to load ES modules over `file://`,
