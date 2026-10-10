@@ -12,7 +12,7 @@ const t = {
     ]),
 };
 
-const suites = ["./geometry.test.js"];
+const suites = ["./geometry.test.js", "./render.test.js"];
 for (const s of suites) (await import(s)).default(t);
 
 let failed = 0;
