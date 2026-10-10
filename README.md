@@ -163,6 +163,39 @@ mechanical fault on the field.
 measurement, because these are questions about the control loop rather than
 about pixels.
 
+## Gain sweep
+
+    node tools/sweep.js                 # with the real 34 ms delay
+    node tools/sweep.js --latency 0     # what tuning without delay suggests
+
+Runs the chase over a grid of gains and eight ball positions, and reports
+three answers rather than one — fastest, smoothest, balanced — because the
+right trade depends on whether you care more about seconds or about the robot
+not looking broken. Each candidate is judged by its **worst** scenario, not
+its average: a gain set that is quick on a ball straight ahead and awful on
+one off to the side is not a good gain set, and auto does not get to choose.
+
+With the real delay in the loop:
+
+|            | kTurn | kDrive | total time | turn reversals |
+|------------|-------|--------|-----------|----------------|
+| smoothest  | 0.004 | 0.05   | 16.0 s | **1** |
+| fastest    | 0.008 | 0.055  | 15.8 s | 8 |
+| **current**| 0.022 | 0.03   | 16.9 s | **38** |
+
+The same sweep with delay switched off ranks the current gains at 3
+reversals, nearly respectable. **Delay makes them look twelve times worse,
+and it is the delay that is real.** That is the argument for modelling it.
+
+The suggestion is roughly **kTurn 0.008, kDrive 0.05** — about a third of the
+current steering gain, and more drive. Not 0.004: below about 0.008 the
+proportional term is swamped by `kTurnMin` and the controller becomes
+bang-bang with a deadband, which the score likes but which leaves nothing to
+tune.
+
+These numbers come from clean pixels and a massless kinematic robot. They are
+a starting point to try, not values to paste in.
+
 ## What it still cannot tell you
 
 JPEG compression, real gym lighting, a camera that browns out on USB power,
