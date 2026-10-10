@@ -136,6 +136,33 @@ yellow — the simulator loses them at 0.45, 0.40 and 0.25.
   is proven and the tape case has only been seen in simulation. The slider is
   in the UI; try "Ball on tape" at 0.45 and again at 0.80.
 
+## Pipeline delay
+
+`src/latency.js` holds detections back the way the real stack does: about
+34 ms of capture and processing, then a 20 Hz poll on top. The controller
+never sees the present, and the robot keeps moving through the delay, so the
+bearing it steers on describes where the ball *was*.
+
+This is the thing a simulator is most tempted to leave out and the thing most
+likely to make its tuning wrong. Measured, on the same chase:
+
+| latency | captured | time | turn reversals | worst bearing |
+|---------|----------|------|----------------|---------------|
+| 0 ms    | yes | 2.0 s | **0** | 19 deg |
+| 34 ms (real) | yes | 2.1 s | **5** | 19 deg |
+| 80 ms   | yes | 2.4 s | 4 | 31 deg |
+| 150 ms  | yes | 3.0 s | 3 | 58 deg |
+
+**The shipped `kTurn` of 0.022 is clean with no delay and hunts at the real
+34 ms.** Tuning against an instant pipeline would have blessed it. The loop
+still converges at every delay tested, so this is a quality problem rather
+than a stability one — but it is exactly the sort of thing that looks like a
+mechanical fault on the field.
+
+`test/loop.js` runs the chase headless, with no rendering and a perfect
+measurement, because these are questions about the control loop rather than
+about pixels.
+
 ## What it still cannot tell you
 
 JPEG compression, real gym lighting, a camera that browns out on USB power,

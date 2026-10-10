@@ -21,6 +21,7 @@ const ORDER = [
   "src/detector.js",
   "src/pursuit.js",
   "src/robot.js",
+  "src/latency.js",
   "src/sim.js",
 ];
 

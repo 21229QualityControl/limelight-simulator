@@ -8,6 +8,7 @@ import { detect, PROC_W, RING_FREE_MIN } from "./detector.js";
 import { BallPursuit, defaultParams } from "./pursuit.js";
 import { Robot, defaultChassis } from "./robot.js";
 import { applySensor, defaultSensor } from "./realism.js";
+import { DelayLine, defaultPipeline } from "./latency.js";
 
 const CAM_W = 640, CAM_H = 480;
 const FIELD_IN = 144;                      // 12 ft, drawn on a 520 px canvas
@@ -31,6 +32,13 @@ let balls = [
 let tape = [{ from: [-60, -70], to: [120, -70], widthIn: 2 }];
 const sensor = defaultSensor();
 const detOpts = { ringFreeMin: RING_FREE_MIN };
+// The controller never sees the present: a detection is ~34 ms old by the
+// time Java reads it, and the camera is polled at 20 Hz on top of that.
+// Feeding results instantly is the most optimistic thing a simulator can do,
+// and it blesses gains that hunt on the real robot.
+const pipeline = defaultPipeline();
+const delay = new DelayLine(pipeline);
+let simClockMs = 0;
 let running = false, lastT = 0, last = null, lastTurnRate = 0;
 
 // ------------------------------------------------------------------ loop
@@ -73,12 +81,17 @@ function tick(now) {
   drawMask(det);
 
   if (running && document.getElementById("chase").checked) {
-    const t = det.best
+    simClockMs += dt * 1000;
+    delay.p = pipeline;
+    delay.push(simClockMs, det.best
       ? { rangeIn: det.best.rangeIn, lateralIn: det.best.lateralIn, txDeg: det.best.txDeg }
-      : null;
+      : null);
+    const t = delay.read(simClockMs);
     const o = pursuit.update(t, dt);
     robot.step(o, dt);
     lastTurnRate = (o.turn * chassis.maxTurnDps * Math.PI) / 180;
+    document.getElementById("agenote").textContent =
+      `Acting on a detection about ${Math.round(delay.ageMs(simClockMs))} ms old.`;
     if (o.captured) {
       // Collect it: remove whatever is closest to the robot, then look again.
       const cm = robot.cameraPose();
@@ -228,6 +241,10 @@ ballSel.onchange = () => { setBallDiameter(parseFloat(ballSel.value)); updateBli
 
 document.getElementById("camnote").textContent = CAMERAS[camSel.value].note;
 
+const pipeHost = document.getElementById("pipeline");
+slider(pipeHost, "processing latency", pipeline, "latencyMs", 0, 200, 1, " ms");
+slider(pipeHost, "poll rate", pipeline, "pollHz", 5, 100, 1, " Hz");
+
 const detHost = document.getElementById("detector");
 slider(detHost, "ring freedom required", detOpts, "ringFreeMin", 0.2, 0.95, 0.05);
 
@@ -268,6 +285,8 @@ document.getElementById("run").onclick = (e) => {
 document.getElementById("reset").onclick = () => {
   robot = new Robot(chassis, { x: -40, y: 0, headingRad: 0 });
   pursuit = new BallPursuit(params);
+  delay.reset();
+  simClockMs = 0;
   balls = [
     { x: 20, y: 6, color: "yellow" },
     { x: 34, y: -18, color: "blue" },
@@ -385,6 +404,8 @@ for (const d of DEMOS) {
     d.apply();
     robot = new Robot(chassis, { x: -40, y: 0, headingRad: 0 });
     pursuit = new BallPursuit(params);
+    delay.reset();
+    simClockMs = 0;
     document.getElementById("demonote").textContent = d.why;
     syncGainSliders();
     syncSensorSliders();
