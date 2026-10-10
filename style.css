@@ -82,3 +82,12 @@ details#explain summary {
 .explain-body ul { margin: 4px 0; padding-left: 20px; }
 .explain-body li { margin-bottom: 4px; }
 #demos button { font-size: 13px; padding: 5px 10px; }
+
+.sub-d { margin-top: 8px; }
+.sub-d summary { cursor: pointer; font-size: 12px; color: var(--accent); }
+textarea {
+  width: 100%; font: 11px/1.4 var(--mono); margin: 6px 0;
+  background: var(--bg); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 6px; padding: 6px;
+}
+code { font: 11px var(--mono); color: var(--ink); }

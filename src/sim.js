@@ -253,6 +253,41 @@ slider(sensorHost, "brightness (exposure x gain)", sensor, "brightness", 0.1, 2.
 slider(sensorHost, "sensor noise", sensor, "noise", 0, 40, 1);
 slider(sensorHost, "exposure time", sensor, "exposureSec", 0.002, 0.06, 0.001, " s");
 
+// Paste the camera's own /hwreport rather than trusting a preset. This is
+// the single most important thing for another team: lens calibration is
+// per-unit, and using ours would bias every distance they read.
+document.getElementById("applyhw").onclick = () => {
+  const el = document.getElementById("hwreport");
+  const out = document.getElementById("hwstatus");
+  try {
+    const j = JSON.parse(el.value);
+    const r = Array.isArray(j.hwreport) ? j.hwreport[0] : j;
+    const need = ["FOCAL_LEN_X_PIXELS", "FOCAL_LEN_Y_PIXELS",
+                  "PRINCIPAL_X_PIXELS", "PRINCIPAL_Y_PIXELS", "RES_X", "RES_Y"];
+    for (const k of need) if (typeof r[k] !== "number") throw new Error("missing " + k);
+    setCamera({
+      label: "Your camera", calW: r.RES_X, calH: r.RES_Y,
+      fx: r.FOCAL_LEN_X_PIXELS, fy: r.FOCAL_LEN_Y_PIXELS,
+      cx: r.PRINCIPAL_X_PIXELS, cy: r.PRINCIPAL_Y_PIXELS,
+      vfovBottomDeg: typeof r.VFOV_BOTTOM === "number" ? r.VFOV_BOTTOM : 20.17,
+      note: "From your own /hwreport.",
+    });
+    out.textContent = ` applied: fx ${r.FOCAL_LEN_X_PIXELS.toFixed(0)}, ` +
+                      `${r.RES_X}x${r.RES_Y}`;
+    document.getElementById("camnote").textContent = "Using your own calibration.";
+    updateBlind();
+  } catch (e) {
+    out.textContent = " could not read that: " + e.message;
+  }
+};
+
+const chassisHost = document.getElementById("chassis");
+slider(chassisHost, "max forward speed", chassis, "maxForwardIps", 10, 120, 1, " in/s");
+slider(chassisHost, "max strafe speed", chassis, "maxStrafeIps", 10, 120, 1, " in/s");
+slider(chassisHost, "max turn rate", chassis, "maxTurnDps", 40, 600, 5, " deg/s");
+slider(chassisHost, "breakaway power", chassis, "breakawayForward", 0, 0.3, 0.01);
+slider(chassisHost, "camera ahead of centre", chassis, "cameraForwardIn", -12, 24, 0.5, " in");
+
 const mountHost = document.getElementById("mount");
 slider(mountHost, "lens height", mount, "heightIn", 4, 20, 0.1, " in");
 slider(mountHost, "pitch below horizontal", mount, "pitchDeg", 0, 45, 0.1, " deg");

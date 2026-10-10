@@ -90,6 +90,15 @@ details#explain summary {
 .explain-body li { margin-bottom: 4px; }
 #demos button { font-size: 13px; padding: 5px 10px; }
 
+.sub-d { margin-top: 8px; }
+.sub-d summary { cursor: pointer; font-size: 12px; color: var(--accent); }
+textarea {
+  width: 100%; font: 11px/1.4 var(--mono); margin: 6px 0;
+  background: var(--bg); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 6px; padding: 6px;
+}
+code { font: 11px var(--mono); color: var(--ink); }
+
 </style>
 </head>
 <body>
@@ -194,6 +203,23 @@ details#explain summary {
         <select id="ball"></select>
       </label>
       <p class="note" id="camnote"></p>
+      <details class="sub-d">
+        <summary>Use my camera's own calibration</summary>
+        <p class="note">On a laptop with the Limelight plugged in over USB:<br>
+          <code>curl -s http://172.29.0.1:5807/hwreport</code><br>
+          Paste the whole response here. Lens calibration is per-unit; using
+          someone else's biases every distance.</p>
+        <textarea id="hwreport" rows="3" placeholder="paste /hwreport JSON"></textarea>
+        <button id="applyhw">Apply</button>
+        <span id="hwstatus" class="note"></span>
+      </details>
+    </div>
+
+    <div class="panel">
+      <h2>Your drivetrain</h2>
+      <div id="chassis"></div>
+      <p class="note">Measure these on your robot. They set how fast the sim
+      moves, so gains tuned here only transfer if the speeds match.</p>
     </div>
 
     <div class="panel">
@@ -1620,6 +1646,41 @@ const sensorHost = document.getElementById("sensor");
 slider(sensorHost, "brightness (exposure x gain)", sensor, "brightness", 0.1, 2.0, 0.05, "x");
 slider(sensorHost, "sensor noise", sensor, "noise", 0, 40, 1);
 slider(sensorHost, "exposure time", sensor, "exposureSec", 0.002, 0.06, 0.001, " s");
+
+// Paste the camera's own /hwreport rather than trusting a preset. This is
+// the single most important thing for another team: lens calibration is
+// per-unit, and using ours would bias every distance they read.
+document.getElementById("applyhw").onclick = () => {
+  const el = document.getElementById("hwreport");
+  const out = document.getElementById("hwstatus");
+  try {
+    const j = JSON.parse(el.value);
+    const r = Array.isArray(j.hwreport) ? j.hwreport[0] : j;
+    const need = ["FOCAL_LEN_X_PIXELS", "FOCAL_LEN_Y_PIXELS",
+                  "PRINCIPAL_X_PIXELS", "PRINCIPAL_Y_PIXELS", "RES_X", "RES_Y"];
+    for (const k of need) if (typeof r[k] !== "number") throw new Error("missing " + k);
+    setCamera({
+      label: "Your camera", calW: r.RES_X, calH: r.RES_Y,
+      fx: r.FOCAL_LEN_X_PIXELS, fy: r.FOCAL_LEN_Y_PIXELS,
+      cx: r.PRINCIPAL_X_PIXELS, cy: r.PRINCIPAL_Y_PIXELS,
+      vfovBottomDeg: typeof r.VFOV_BOTTOM === "number" ? r.VFOV_BOTTOM : 20.17,
+      note: "From your own /hwreport.",
+    });
+    out.textContent = ` applied: fx ${r.FOCAL_LEN_X_PIXELS.toFixed(0)}, ` +
+                      `${r.RES_X}x${r.RES_Y}`;
+    document.getElementById("camnote").textContent = "Using your own calibration.";
+    updateBlind();
+  } catch (e) {
+    out.textContent = " could not read that: " + e.message;
+  }
+};
+
+const chassisHost = document.getElementById("chassis");
+slider(chassisHost, "max forward speed", chassis, "maxForwardIps", 10, 120, 1, " in/s");
+slider(chassisHost, "max strafe speed", chassis, "maxStrafeIps", 10, 120, 1, " in/s");
+slider(chassisHost, "max turn rate", chassis, "maxTurnDps", 40, 600, 5, " deg/s");
+slider(chassisHost, "breakaway power", chassis, "breakawayForward", 0, 0.3, 0.01);
+slider(chassisHost, "camera ahead of centre", chassis, "cameraForwardIn", -12, 24, 0.5, " in");
 
 const mountHost = document.getElementById("mount");
 slider(mountHost, "lens height", mount, "heightIn", 4, 20, 0.1, " in");

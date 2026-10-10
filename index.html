@@ -108,6 +108,23 @@
         <select id="ball"></select>
       </label>
       <p class="note" id="camnote"></p>
+      <details class="sub-d">
+        <summary>Use my camera's own calibration</summary>
+        <p class="note">On a laptop with the Limelight plugged in over USB:<br>
+          <code>curl -s http://172.29.0.1:5807/hwreport</code><br>
+          Paste the whole response here. Lens calibration is per-unit; using
+          someone else's biases every distance.</p>
+        <textarea id="hwreport" rows="3" placeholder="paste /hwreport JSON"></textarea>
+        <button id="applyhw">Apply</button>
+        <span id="hwstatus" class="note"></span>
+      </details>
+    </div>
+
+    <div class="panel">
+      <h2>Your drivetrain</h2>
+      <div id="chassis"></div>
+      <p class="note">Measure these on your robot. They set how fast the sim
+      moves, so gains tuned here only transfer if the speeds match.</p>
     </div>
 
     <div class="panel">

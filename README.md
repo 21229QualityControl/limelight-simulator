@@ -43,6 +43,52 @@ modules and a server:
 
 and rebuild the single file with `node build.js`.
 
+## For another team: how to actually use this
+
+Open https://21229qualitycontrol.github.io/limelight-simulator/ and work down
+the side panel in order. Each step changes the ones below it, so order
+matters.
+
+**1. Your camera.** Plug the Limelight into a laptop over USB and run
+
+    curl -s http://172.29.0.1:5807/hwreport
+
+Paste the whole response into "Use my camera's own calibration". Lens
+calibration is per-unit; using ours biases every distance you read.
+
+**2. Your ball.** A 2.91 in pickleball and a 5.0 in artifact are not
+interchangeable. Diameter scales every distance.
+
+**3. Your mount.** Lens height above the floor, and tilt below horizontal.
+Watch the "nearest visible ball" figure: that is the radius inside which your
+camera is blind, and it is usually further out than people expect. If your
+intake is closer to the robot than that number, you have a design problem the
+software cannot fix.
+
+**4. Your drivetrain.** Max speeds and breakaway power, measured on your
+robot. Gains tuned at the wrong speed do not transfer.
+
+**5. Your pipeline delay.** 34 ms is what we measured; yours will differ with
+resolution and how busy the frame is. The llpython panel on a real robot
+shows it.
+
+Now the simulator is describing *your* robot. Try the demos, then run
+
+    node tools/sweep.js
+
+for gains that suit your geometry.
+
+### What this will and will not tell you
+
+It **will** tell you whether your camera can see where you need it to, where
+your blind zone is, whether your commit distance clears it, and roughly what
+control gains suit your robot.
+
+It **will not** test your detector, unless you happen to run the same
+algorithm. The vision here is a port of one specific SnapScript. If you have
+your own pipeline, treat this as a geometry and control tool and ignore the
+mask view.
+
 ## Using it with your own robot
 
 Nothing here is hardcoded to one team any more. The two settings that change
