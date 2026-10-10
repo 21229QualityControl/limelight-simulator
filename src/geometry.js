@@ -5,20 +5,52 @@
 // the robot. test/geometry.test.js pins it to measurements taken on the real
 // camera.
 
-// Lens calibration read from this Limelight's own /hwreport, at 1280x960.
-// Per-unit values: a different camera needs its own numbers.
-export const CAL_W = 1280.0;
-export const CAL_H = 960.0;
-export const FX = 1221.445;
-export const FY = 1223.398;
-export const CX = 637.226;
-export const CY = 502.549;
+// Lens calibration. These are NOT universal -- every camera has its own, and
+// using someone else's silently biases every distance. Read yours from the
+// camera itself:
+//
+//     curl -s http://172.29.0.1:5807/hwreport | python3 -m json.tool
+//
+// and copy FOCAL_LEN_X_PIXELS, FOCAL_LEN_Y_PIXELS, PRINCIPAL_X_PIXELS,
+// PRINCIPAL_Y_PIXELS, RES_X, RES_Y into a preset below.
+export const CAMERAS = {
+  "limelight-3a": {
+    label: "Limelight 3A (measured)",
+    calW: 1280.0, calH: 960.0,
+    fx: 1221.445, fy: 1223.398,
+    cx: 637.226, cy: 502.549,
+    vfovBottomDeg: 20.169729814416087,
+    note: "Read from a real unit's /hwreport. Other units should be close.",
+  },
+  "generic-70": {
+    label: "Generic 70 deg diagonal",
+    calW: 1280.0, calH: 960.0,
+    fx: 1150.0, fy: 1150.0,
+    cx: 640.0, cy: 480.0,
+    vfovBottomDeg: 22.6,
+    note: "A plausible stand-in. Replace with your own calibration.",
+  },
+};
 
-/** Half-FOV below the optical axis, degrees. Sets where the camera goes blind. */
-export const VFOV_BOTTOM_DEG = 20.169729814416087;
+export const DEFAULT_CAMERA = "limelight-3a";
 
-/** 74 mm pickleball. A DECODE artifact is 5.0; this scales every distance. */
-export const BALL_DIAMETER_IN = 2.91;
+/** Mutable active calibration. Change through setCamera(). */
+export let CAL = { ...CAMERAS[DEFAULT_CAMERA] };
+
+/** @param {string|object} c preset key, or a calibration object. */
+export function setCamera(c) {
+  CAL = typeof c === "string" ? { ...CAMERAS[c] } : { ...CAL, ...c };
+  return CAL;
+}
+
+export const BALLS = {
+  pickleball: { label: 'Pickleball / pollen (2.91")', diameterIn: 2.91 },
+  decode: { label: 'DECODE artifact (5.0")', diameterIn: 5.0 },
+};
+
+/** Scales EVERY distance. Must match the ball you are actually chasing. */
+export let BALL_DIAMETER_IN = 2.91;
+export function setBallDiameter(inches) { BALL_DIAMETER_IN = inches; }
 
 export class Geometry {
   /**
@@ -27,14 +59,16 @@ export class Geometry {
    * @param {number} camHeightIn lens centre above the floor
    * @param {number} pitchDeg degrees BELOW horizontal
    */
-  constructor(imgW, imgH, camHeightIn, pitchDeg) {
-    const s = imgW / CAL_W;
-    this.fx = FX * s;
-    this.fy = FY * (imgH / CAL_H);
-    this.cx = CX * s;
-    this.cy = CY * (imgH / CAL_H);
+  /** @param {object} [cal] calibration override; defaults to the active one. */
+  constructor(imgW, imgH, camHeightIn, pitchDeg, cal = CAL, ballDiameterIn = BALL_DIAMETER_IN) {
+    const s = imgW / cal.calW;
+    this.fx = cal.fx * s;
+    this.fy = cal.fy * (imgH / cal.calH);
+    this.cx = cal.cx * s;
+    this.cy = cal.cy * (imgH / cal.calH);
+    this.cal = cal;
     this.h = camHeightIn;
-    this.ballR = BALL_DIAMETER_IN * 0.5;
+    this.ballR = ballDiameterIn * 0.5;
     const t = (pitchDeg * Math.PI) / 180;
     this.st = Math.sin(t);
     this.ct = Math.cos(t);
@@ -106,7 +140,7 @@ export class Geometry {
 
   /** Nearest ball the camera can see, inches. Below this there is nothing. */
   nearestVisibleIn() {
-    const a = ((this.pitchDeg + VFOV_BOTTOM_DEG) * Math.PI) / 180;
+    const a = ((this.pitchDeg + this.cal.vfovBottomDeg) * Math.PI) / 180;
     return (this.h - this.ballR) / Math.tan(a);
   }
 }

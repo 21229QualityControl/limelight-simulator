@@ -27,11 +27,39 @@ geometry and control tuning, not for proving the detector is robust.
 
 ## Running
 
-No build step. Open `index.html`, or:
+**Easiest: open `dist/limelight-simulator.html`.** One file, no server, no
+install, works offline. Double-click it, or email it to someone.
 
-    python3 -m http.server 8000
+That file exists because browsers refuse to load ES modules over `file://`,
+so `index.html` alone needs a web server — a silly thing to ask of someone who
+just wants to look at a simulator. If you are editing the source, use the
+modules and a server:
 
-Then http://localhost:8000
+    python3 -m http.server 8000     # then http://localhost:8000
+
+and rebuild the single file with `node build.js`.
+
+## Using it with your own robot
+
+Nothing here is hardcoded to one team any more. The two settings that change
+every distance are at the top of the side panel:
+
+- **Camera.** Lens calibration is per-unit. Using someone else's silently
+  biases every range. Read yours off the camera and add a preset in
+  `src/geometry.js`:
+
+      curl -s http://172.29.0.1:5807/hwreport | python3 -m json.tool
+
+  Copy `FOCAL_LEN_X_PIXELS`, `FOCAL_LEN_Y_PIXELS`, `PRINCIPAL_X_PIXELS`,
+  `PRINCIPAL_Y_PIXELS`, `RES_X`, `RES_Y`.
+
+- **Ball.** A 2.91 in pickleball and a 5.0 in DECODE artifact are not
+  interchangeable; the diameter scales every distance.
+
+Then set the **mounting** sliders to your lens height and tilt, and the
+**pursuit gains** to whatever your code uses. The panel tells you the nearest
+ball your camera can physically see and warns when your commit distance does
+not clear it.
 
 ## State
 

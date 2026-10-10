@@ -1,0 +1,1364 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Limelight Simulator</title>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #fff; --ink: #1b1f24; --muted: #5a6472;
+  --line: #d8dde4; --accent: #2b6cb0; --ok: #2f855a; --warn: #b7791f;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14171c; --panel: #1c2026; --ink: #e6e9ee; --muted: #9aa5b4;
+    --line: #2c333c; --accent: #63a4e0; --ok: #68d391; --warn: #e3b341;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+header { padding: 20px 16px 8px; max-width: 1400px; margin: 0 auto; }
+h1 { margin: 0; font-size: 20px; letter-spacing: -0.01em; }
+.sub { margin: 4px 0 0; color: var(--muted); max-width: 70ch; }
+main {
+  display: grid; grid-template-columns: minmax(0,1fr) 320px; gap: 16px;
+  padding: 16px; max-width: 1400px; margin: 0 auto; align-items: start;
+}
+@media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+.views { display: flex; flex-wrap: wrap; gap: 16px; }
+figure { margin: 0; }
+figcaption {
+  font-size: 12px; color: var(--muted); margin-bottom: 6px;
+  text-transform: uppercase; letter-spacing: .04em;
+}
+.hint { text-transform: none; letter-spacing: 0; opacity: .8; }
+canvas {
+  display: block; background: #000; border: 1px solid var(--line);
+  border-radius: 8px; max-width: 100%; height: auto; image-rendering: pixelated;
+}
+#field { image-rendering: auto; background: var(--panel); }
+.side { display: flex; flex-direction: column; gap: 12px; }
+.panel {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 10px; padding: 12px;
+}
+.panel h2 {
+  font-size: 12px; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--muted); margin: 0 0 8px;
+}
+.row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+button {
+  font: inherit; padding: 6px 14px; border-radius: 6px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink); cursor: pointer;
+}
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button:hover { filter: brightness(1.06); }
+label { font-size: 13px; color: var(--muted); }
+.sel { display: block; }
+select { font: inherit; margin-left: 6px; }
+table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12px; }
+td { padding: 2px 0; }
+td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+td.k { color: var(--muted); }
+.slider { margin-bottom: 8px; }
+.slider .lab {
+  display: flex; justify-content: space-between; font-size: 12px; color: var(--muted);
+}
+.slider .lab b { font-weight: 600; color: var(--ink); font-family: var(--mono); }
+input[type=range] { width: 100%; }
+.note { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
+.good { color: var(--ok); } .bad { color: var(--warn); }
+
+</style>
+</head>
+<body>
+<header>
+  <h1>Limelight Simulator</h1>
+  <p class="sub">Pollen tracking, run away from the robot. The detector and the
+  pursuit controller here are ports of what runs on the camera and the hub.</p>
+</header>
+
+<main>
+  <section class="views">
+    <figure>
+      <figcaption>Camera view <span class="hint">what the Limelight sees</span></figcaption>
+      <canvas id="cam" width="640" height="480"></canvas>
+    </figure>
+    <figure>
+      <figcaption>Mask <span class="hint">after threshold, close, open</span></figcaption>
+      <canvas id="mask" width="320" height="240"></canvas>
+    </figure>
+    <figure>
+      <figcaption>Field <span class="hint">click to move a ball, shift-click to add</span></figcaption>
+      <canvas id="field" width="520" height="520"></canvas>
+    </figure>
+  </section>
+
+  <section class="side">
+    <div class="panel">
+      <div class="row">
+        <button id="run" class="primary">Start</button>
+        <button id="reset">Reset</button>
+      </div>
+      <div class="row">
+        <label><input type="checkbox" id="chase" checked> chase the ball</label>
+        <label><input type="checkbox" id="gate"> size gate</label>
+      </div>
+      <label class="sel">Colour filter
+        <select id="wanted">
+          <option value="">any</option>
+          <option value="red">red</option>
+          <option value="blue">blue</option>
+          <option value="yellow">yellow</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="panel">
+      <h2>llpython</h2>
+      <table id="out"><tbody></tbody></table>
+    </div>
+
+    <div class="panel">
+      <h2>Setup</h2>
+      <label class="sel">Camera
+        <select id="camera"></select>
+      </label>
+      <label class="sel">Ball
+        <select id="ball"></select>
+      </label>
+      <p class="note" id="camnote"></p>
+    </div>
+
+    <div class="panel">
+      <h2>Mounting</h2>
+      <div id="mount"></div>
+      <p class="note" id="blind"></p>
+    </div>
+
+    <div class="panel">
+      <h2>Pursuit gains</h2>
+      <div id="gains"></div>
+    </div>
+  </section>
+</main>
+
+<script type="module">
+
+// ===== src/geometry.js =============================================
+// Pinhole camera + flat-floor solver.
+//
+// A direct port of the Geometry class in ball_snapscript.py. Any change here
+// must be mirrored there and vice versa, or the simulator stops predicting
+// the robot. test/geometry.test.js pins it to measurements taken on the real
+// camera.
+
+// Lens calibration. These are NOT universal -- every camera has its own, and
+// using someone else's silently biases every distance. Read yours from the
+// camera itself:
+//
+//     curl -s http://172.29.0.1:5807/hwreport | python3 -m json.tool
+//
+// and copy FOCAL_LEN_X_PIXELS, FOCAL_LEN_Y_PIXELS, PRINCIPAL_X_PIXELS,
+// PRINCIPAL_Y_PIXELS, RES_X, RES_Y into a preset below.
+const CAMERAS = {
+  "limelight-3a": {
+    label: "Limelight 3A (measured)",
+    calW: 1280.0, calH: 960.0,
+    fx: 1221.445, fy: 1223.398,
+    cx: 637.226, cy: 502.549,
+    vfovBottomDeg: 20.169729814416087,
+    note: "Read from a real unit's /hwreport. Other units should be close.",
+  },
+  "generic-70": {
+    label: "Generic 70 deg diagonal",
+    calW: 1280.0, calH: 960.0,
+    fx: 1150.0, fy: 1150.0,
+    cx: 640.0, cy: 480.0,
+    vfovBottomDeg: 22.6,
+    note: "A plausible stand-in. Replace with your own calibration.",
+  },
+};
+
+const DEFAULT_CAMERA = "limelight-3a";
+
+/** Mutable active calibration. Change through setCamera(). */
+let CAL = { ...CAMERAS[DEFAULT_CAMERA] };
+
+/** @param {string|object} c preset key, or a calibration object. */
+function setCamera(c) {
+  CAL = typeof c === "string" ? { ...CAMERAS[c] } : { ...CAL, ...c };
+  return CAL;
+}
+
+const BALLS = {
+  pickleball: { label: 'Pickleball / pollen (2.91")', diameterIn: 2.91 },
+  decode: { label: 'DECODE artifact (5.0")', diameterIn: 5.0 },
+};
+
+/** Scales EVERY distance. Must match the ball you are actually chasing. */
+let BALL_DIAMETER_IN = 2.91;
+function setBallDiameter(inches) { BALL_DIAMETER_IN = inches; }
+
+class Geometry {
+  /**
+   * @param {number} imgW  working image width, px
+   * @param {number} imgH  working image height, px
+   * @param {number} camHeightIn lens centre above the floor
+   * @param {number} pitchDeg degrees BELOW horizontal
+   */
+  /** @param {object} [cal] calibration override; defaults to the active one. */
+  constructor(imgW, imgH, camHeightIn, pitchDeg, cal = CAL, ballDiameterIn = BALL_DIAMETER_IN) {
+    const s = imgW / cal.calW;
+    this.fx = cal.fx * s;
+    this.fy = cal.fy * (imgH / cal.calH);
+    this.cx = cal.cx * s;
+    this.cy = cal.cy * (imgH / cal.calH);
+    this.cal = cal;
+    this.h = camHeightIn;
+    this.ballR = ballDiameterIn * 0.5;
+    const t = (pitchDeg * Math.PI) / 180;
+    this.st = Math.sin(t);
+    this.ct = Math.cos(t);
+    this.pitchDeg = pitchDeg;
+    this.imgW = imgW;
+    this.imgH = imgH;
+  }
+
+  /** Unit-ish ray in robot frame: X forward, Y left, Z up. */
+  ray(u, v) {
+    const x = (u - this.cx) / this.fx;
+    const y = (v - this.cy) / this.fy;
+    return [this.ct - y * this.st, -x, -y * this.ct - this.st];
+  }
+
+  /**
+   * Where the pixel's ray meets a ball centre sitting on the floor.
+   * @returns {{rangeIn:number, lateralIn:number, forwardIn:number}|null}
+   *          null when the ray never reaches the floor (above the horizon).
+   */
+  solve(u, v) {
+    const [X, Y, Z] = this.ray(u, v);
+    if (Z >= -1e-6) return null;
+    const t = (this.ballR - this.h) / Z;
+    if (t <= 0) return null;
+    const fwd = t * X;
+    const lat = t * Y;
+    return { rangeIn: Math.hypot(fwd, lat), lateralIn: lat, forwardIn: fwd };
+  }
+
+  /**
+   * Apparent radius of a real ball whose centre sits at image row v.
+   * This is what separates a ball from floor tape: tape is far thinner.
+   */
+  expectedRadiusPx(v) {
+    const s = this.solve(this.cx, v);
+    if (s === null) return null;
+    const slant = Math.hypot(s.rangeIn, this.h - this.ballR);
+    if (slant < 1.0) return null;
+    return (this.ballR * this.fx) / slant;
+  }
+
+  /** @returns {{txDeg:number, tyDeg:number}} + tx is right, + ty is up. */
+  angles(u, v) {
+    return {
+      txDeg: (Math.atan2(u - this.cx, this.fx) * 180) / Math.PI,
+      tyDeg: (Math.atan2(-(v - this.cy), this.fy) * 180) / Math.PI,
+    };
+  }
+
+  /**
+   * Inverse of solve(): where a ball at this floor position lands in the
+   * image. The renderer needs this; the detector does not.
+   * @returns {{u:number, v:number, radiusPx:number}|null} null if behind or
+   *          outside the frame.
+   */
+  project(forwardIn, lateralIn) {
+    // robot frame -> camera frame
+    const dz = this.ballR - this.h;          // ball centre relative to lens
+    const zc = forwardIn * this.ct - dz * this.st;
+    if (zc <= 0.1) return null;              // behind the camera
+    const xc = -lateralIn;
+    const yc = -(forwardIn * this.st + dz * this.ct);
+    const u = this.cx + (xc / zc) * this.fx;
+    const v = this.cy + (yc / zc) * this.fy;
+    const slant = Math.hypot(forwardIn, lateralIn, dz);
+    return { u, v, radiusPx: (this.ballR * this.fx) / slant };
+  }
+
+  /** Nearest ball the camera can see, inches. Below this there is nothing. */
+  nearestVisibleIn() {
+    const a = ((this.pitchDeg + this.cal.vfovBottomDeg) * Math.PI) / 180;
+    return (this.h - this.ballR) / Math.tan(a);
+  }
+}
+
+
+// ===== src/thresholds.js ===========================================
+// HSV windows, mirroring THRESHOLDS in ball_snapscript.py.
+// OpenCV convention: H 0-179, S/V 0-255.
+//
+// Hue came from measuring 109 photos of the team's own balls. The saturation
+// floor of 150 came later, from the camera's own footage: real balls read
+// median S 163-244, while everything that produced a false positive -- sky-lit
+// metal, a window frame, tan cardboard -- read S 103-140. Saturation, not hue,
+// is what separates a plastic ball from the building it is sitting in.
+//
+// The value floor is 60, well under the 104 a blue ball reads on a correctly
+// exposed frame. Blue is always the dimmest of the three.
+
+const COLOR_ID = { none: 0, red: 1, blue: 2, yellow: 3 };
+const ID_COLOR = { 0: "none", 1: "red", 2: "blue", 3: "yellow" };
+
+/** Each entry is a list of [hMin,sMin,vMin],[hMax,sMax,vMax] boxes. */
+const THRESHOLDS = {
+  red: [
+    [[0, 150, 60], [8, 255, 255]],       // red wraps the hue seam
+    [[170, 150, 60], [179, 255, 255]],
+  ],
+  blue: [[[103, 150, 60], [122, 255, 255]]],
+  yellow: [[[16, 150, 60], [32, 255, 255]]],
+};
+
+/** True if an HSV triple falls inside the window for `color`. */
+function matches(color, h, s, v) {
+  const boxes = THRESHOLDS[color];
+  if (!boxes) return false;
+  for (const [lo, hi] of boxes) {
+    if (h >= lo[0] && h <= hi[0] && s >= lo[1] && s <= hi[1] && v >= lo[2] && v <= hi[2]) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Which colour window an HSV triple falls into, or null. */
+function classify(h, s, v) {
+  for (const c of ["red", "blue", "yellow"]) if (matches(c, h, s, v)) return c;
+  return null;
+}
+
+
+// ===== src/render.js ===============================================
+// Draws the synthetic camera view the detector runs on.
+//
+// The point of this file is to produce pixels that exercise the SAME parts of
+// the detector that the real world does. Two details matter more than looking
+// pretty:
+//
+//   * balls get wiffle holes, because the detector's morphological close
+//     exists purely to fill them. Solid discs would skip that step entirely.
+//   * the floor gets tape, because same-coloured tape next to a ball is the
+//     classic false positive and the hardest case the ring test handles.
+//
+// Colours are chosen to land inside the detector's HSV windows; the test
+// suite asserts that rather than trusting it.
+
+/** Ball colours, picked to sit inside the detector's hue/saturation windows. */
+const BALL_RGB = {
+  red:    [205, 28, 32],
+  blue:   [28, 70, 205],
+  yellow: [232, 200, 30],
+};
+
+const FLOOR_RGB = [108, 110, 112];   // grey tile, deliberately low saturation
+const TAPE_RGB  = [40, 85, 190];     // blue gaffer tape, the usual troublemaker
+
+/**
+ * @typedef {{forwardIn:number, lateralIn:number, color:'red'|'blue'|'yellow'}} Ball
+ * @typedef {{from:[number,number], to:[number,number], widthIn:number}} Tape
+ * @typedef {{balls:Ball[], tape:Tape[]}} World
+ */
+
+/**
+ * Render one camera frame.
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {import('./geometry.js').Geometry} geom
+ * @param {World} world
+ * @param {{shading?:boolean, holes?:boolean}} [opts]
+ */
+function renderCameraView(ctx, geom, world, opts = {}) {
+  const { shading = true, holes = true } = opts;
+  const W = geom.imgW, H = geom.imgH;
+
+  drawFloor(ctx, W, H);
+
+  for (const t of world.tape || []) drawTape(ctx, geom, t);
+
+  // Painter's algorithm: far balls first, so near ones occlude them.
+  const sorted = [...(world.balls || [])].sort(
+    (a, b) => Math.hypot(b.forwardIn, b.lateralIn) - Math.hypot(a.forwardIn, a.lateralIn)
+  );
+  for (const b of sorted) drawBall(ctx, geom, b, shading, holes);
+}
+
+function drawFloor(ctx, W, H) {
+  // Slight vertical gradient: real floors are darker close to the robot,
+  // where the chassis shadows them.
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, rgb(scale(FLOOR_RGB, 1.1)));
+  g.addColorStop(1, rgb(scale(FLOOR_RGB, 0.82)));
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+}
+
+function drawTape(ctx, geom, tape) {
+  // Project a run of points along the strip; width shrinks with distance, so
+  // it cannot be stroked as one straight line.
+  const steps = 48;
+  const [f0, l0] = tape.from, [f1, l1] = tape.to;
+  ctx.fillStyle = rgb(TAPE_RGB);
+  for (let i = 0; i < steps; i++) {
+    const a = i / steps, b = (i + 1) / steps;
+    const pa = geom.project(f0 + (f1 - f0) * a, l0 + (l1 - l0) * a);
+    const pb = geom.project(f0 + (f1 - f0) * b, l0 + (l1 - l0) * b);
+    if (!pa || !pb) continue;
+    // width in px from the same scale factor the ball radius uses
+    const wpx = Math.max(
+      1,
+      (tape.widthIn * geom.fx) /
+        Math.hypot(f0 + (f1 - f0) * a, l0 + (l1 - l0) * a, geom.h)
+    );
+    ctx.lineWidth = wpx;
+    ctx.strokeStyle = rgb(TAPE_RGB);
+    ctx.beginPath();
+    ctx.moveTo(pa.u, pa.v);
+    ctx.lineTo(pb.u, pb.v);
+    ctx.stroke();
+  }
+}
+
+function drawBall(ctx, geom, ball, shading, holes) {
+  const p = geom.project(ball.forwardIn, ball.lateralIn);
+  if (!p) return;
+  const r = p.radiusPx;
+  if (r < 1) return;
+
+  const base = BALL_RGB[ball.color];
+  if (!base) return;
+
+  if (shading) {
+    // Lit from above and slightly left, like gym lighting.
+    const g = ctx.createRadialGradient(
+      p.u - r * 0.35, p.v - r * 0.4, r * 0.1,
+      p.u, p.v, r
+    );
+    g.addColorStop(0, rgb(scale(base, 1.18)));
+    g.addColorStop(0.65, rgb(base));
+    g.addColorStop(1, rgb(scale(base, 0.62)));
+    ctx.fillStyle = g;
+  } else {
+    ctx.fillStyle = rgb(base);
+  }
+  ctx.beginPath();
+  ctx.arc(p.u, p.v, r, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (holes && r > 4) drawHoles(ctx, p.u, p.v, r, base);
+}
+
+/**
+ * The dimples. These are what break a naive colour threshold into a ring of
+ * fragments, and why the detector closes the mask before looking for shapes.
+ */
+function drawHoles(ctx, cu, cv, r, base) {
+  ctx.fillStyle = rgb(scale(base, 0.3));
+  const rings = [
+    { count: 1, dist: 0.0, size: 0.17 },
+    { count: 6, dist: 0.45, size: 0.15 },
+    { count: 8, dist: 0.78, size: 0.11 },
+  ];
+  for (const ring of rings) {
+    for (let i = 0; i < ring.count; i++) {
+      const a = (i / ring.count) * Math.PI * 2 + ring.dist;
+      const hu = cu + Math.cos(a) * r * ring.dist;
+      const hv = cv + Math.sin(a) * r * ring.dist * 0.92;
+      // foreshorten holes near the rim, as a sphere does
+      const squash = 1 - 0.55 * ring.dist;
+      ctx.beginPath();
+      ctx.ellipse(hu, hv, r * ring.size * squash, r * ring.size, a, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+const scale = (c, k) => c.map((v) => Math.max(0, Math.min(255, Math.round(v * k))));
+const rgb = (c) => `rgb(${c[0]},${c[1]},${c[2]})`;
+
+/** RGB -> OpenCV-convention HSV (H 0-179, S/V 0-255). Shared with the detector. */
+function rgbToHsv(r, g, b) {
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+  let h = 0;
+  if (d !== 0) {
+    if (mx === r) h = ((g - b) / d) % 6;
+    else if (mx === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+  }
+  h = Math.round((h * 60) / 2);           // degrees -> OpenCV half-degrees
+  if (h < 0) h += 180;
+  const s = mx === 0 ? 0 : Math.round((d / mx) * 255);
+  return [h, s, Math.round(mx)];
+}
+
+
+// ===== src/detector.js =============================================
+// Port of ball_snapscript.py, the detector that runs ON the Limelight.
+//
+// Faithful on purpose: same constants, same order of operations, same output.
+// If this drifts from the Python, the simulator stops predicting the robot.
+//
+// Why not a colour-blob finder: thresholding and taking contours fails twice
+// on a real field. A blue ball touching blue tape becomes one blob, and a row
+// of touching balls becomes one blob with a meaningless centre. So instead:
+//   1. morphological close, to fill the wiffle holes
+//   2. distance-transform peak picking, which splits touching balls and gives
+//      a real radius rather than a bounding box
+//   3. a directional ring test, so a ball may touch things but must be free
+//      in most directions, while a blob inside a wall is enclosed and fails
+//   4. a ground-plane size gate, once the mounting numbers are calibrated
+
+
+const PROC_W = 320;          // detection runs downscaled; angles stay exact
+const MIN_R = 5.0;           // px at PROC_W, smallest ball we will chase
+const MAX_CANDIDATES = 8;    // peaks pulled per colour per frame
+const FILL_MIN = 0.72;       // mask coverage inside the candidate circle
+const CLOSE_R = 3;           // hole-fill radius
+const OPEN_R = 2;            // speckle-kill radius
+
+const RING_SECTORS = 16;
+const RING_SECTOR_FULL = 0.5;  // a sector this covered counts as blocked
+const RING_FREE_MIN = 0.45;    // fraction of sectors that must be free
+
+const SIZE_GATE_LO = 0.35;
+const SIZE_GATE_HI = 3.0;
+const GATE_MAX_RANGE_IN = 48.0; // past this the prediction is too soft to gate on
+const MAX_RANGE_IN = 100.0;     // beyond this is not a drivable target
+
+const TURN_WEIGHT_IN_PER_DEG = 0.9;
+
+/**
+ * @param {{width:number,height:number,data:Uint8ClampedArray}} image RGBA
+ * @param {object} opts
+ * @param {number} [opts.camHeightIn=11.7]
+ * @param {number} [opts.camPitchDeg=25.9]
+ * @param {string} [opts.wantedColor] 'red'|'blue'|'yellow', omit for any
+ * @param {boolean} [opts.sizeGate=false] only enable once calibrated
+ * @param {number} [opts.minR]
+ * @returns {{llpython:number[], balls:object[], best:object|null, masks:object}}
+ */
+function detect(image, opts = {}) {
+  const {
+    camHeightIn = 11.7,
+    camPitchDeg = 25.9,
+    wantedColor = null,
+    sizeGate = false,
+    minR = MIN_R,
+  } = opts;
+
+  const small = downscale(image, PROC_W);
+  const geom = new Geometry(small.width, small.height, camHeightIn, camPitchDeg);
+  const hsv = toHsv(small);
+
+  const colors = wantedColor ? [wantedColor] : ["red", "blue", "yellow"];
+  const balls = [];
+  const masks = {};
+
+  for (const color of colors) {
+    const mask = buildMask(hsv, small.width, small.height, color);
+    masks[color] = mask;
+    for (const c of peaks(mask, small.width, small.height, geom, minR, sizeGate)) {
+      const sol = geom.solve(c.u, c.v);
+      if (sol === null || sol.rangeIn > MAX_RANGE_IN) continue;
+      const { txDeg, tyDeg } = geom.angles(c.u, c.v);
+      balls.push({
+        color, u: c.u, v: c.v, r: c.r, fill: c.fill, sizeScore: c.sizeScore,
+        rangeIn: sol.rangeIn, lateralIn: sol.lateralIn, forwardIn: sol.forwardIn,
+        txDeg, tyDeg,
+      });
+    }
+  }
+
+  // Cross-colour de-duplication: one physical ball, one report.
+  balls.sort((a, b) => b.r * b.fill * b.sizeScore - a.r * a.fill * a.sizeScore);
+  const kept = [];
+  for (const b of balls) {
+    const clash = kept.some(
+      (k) => (b.u - k.u) ** 2 + (b.v - k.v) ** 2 <= (0.8 * Math.max(b.r, k.r)) ** 2
+    );
+    if (!clash) kept.push(b);
+  }
+
+  let best = null;
+  if (kept.length) {
+    best = kept.reduce((lo, b) =>
+      b.rangeIn + TURN_WEIGHT_IN_PER_DEG * Math.abs(b.txDeg) <
+      lo.rangeIn + TURN_WEIGHT_IN_PER_DEG * Math.abs(lo.txDeg) ? b : lo
+    );
+  }
+
+  const llpython = [0, 0, 0, 0, 0, 0, 0, kept.length];
+  if (best) {
+    llpython[0] = 1;
+    llpython[1] = COLOR_ID[best.color];
+    llpython[2] = best.txDeg;
+    llpython[3] = best.tyDeg;
+    llpython[4] = best.rangeIn;
+    llpython[5] = best.lateralIn;
+    llpython[6] = best.r;
+  }
+  return { llpython, balls: kept, best, masks, width: small.width, height: small.height, geom };
+}
+
+// ---------------------------------------------------------------- pixels
+
+function downscale(image, targetW) {
+  if (image.width <= targetW) return image;
+  const scale = targetW / image.width;
+  const w = targetW, h = Math.round(image.height * scale);
+  const out = new Uint8ClampedArray(w * h * 4);
+  const bx = image.width / w, by = image.height / h;
+  // Box average, matching cv2.INTER_AREA closely enough for thresholding.
+  for (let y = 0; y < h; y++) {
+    const y0 = Math.floor(y * by), y1 = Math.min(image.height, Math.ceil((y + 1) * by));
+    for (let x = 0; x < w; x++) {
+      const x0 = Math.floor(x * bx), x1 = Math.min(image.width, Math.ceil((x + 1) * bx));
+      let r = 0, g = 0, b = 0, n = 0;
+      for (let yy = y0; yy < y1; yy++) {
+        for (let xx = x0; xx < x1; xx++) {
+          const i = (yy * image.width + xx) * 4;
+          r += image.data[i]; g += image.data[i + 1]; b += image.data[i + 2]; n++;
+        }
+      }
+      const o = (y * w + x) * 4;
+      out[o] = r / n; out[o + 1] = g / n; out[o + 2] = b / n; out[o + 3] = 255;
+    }
+  }
+  return { width: w, height: h, data: out };
+}
+
+function toHsv(img) {
+  const n = img.width * img.height;
+  const H = new Uint8Array(n), S = new Uint8Array(n), V = new Uint8Array(n);
+  for (let i = 0; i < n; i++) {
+    const r = img.data[i * 4], g = img.data[i * 4 + 1], b = img.data[i * 4 + 2];
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+    let h = 0;
+    if (d !== 0) {
+      if (mx === r) h = ((g - b) / d) % 6;
+      else if (mx === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+    }
+    h = Math.round((h * 60) / 2);
+    if (h < 0) h += 180;
+    H[i] = h;
+    S[i] = mx === 0 ? 0 : Math.round((d / mx) * 255);
+    V[i] = mx;
+  }
+  return { H, S, V };
+}
+
+function buildMask(hsv, w, h, color) {
+  const n = w * h;
+  const m = new Uint8Array(n);
+  const boxes = THRESHOLDS[color];
+  for (let i = 0; i < n; i++) {
+    const H = hsv.H[i], S = hsv.S[i], V = hsv.V[i];
+    for (const [lo, hi] of boxes) {
+      if (H >= lo[0] && H <= hi[0] && S >= lo[1] && V >= lo[2]) { m[i] = 1; break; }
+    }
+  }
+  // close (fill the wiffle holes), then open (kill speckle)
+  return morphOpen(morphClose(m, w, h, CLOSE_R), w, h, OPEN_R);
+}
+
+function diskOffsets(r) {
+  const offs = [];
+  for (let dy = -r; dy <= r; dy++)
+    for (let dx = -r; dx <= r; dx++) if (dx * dx + dy * dy <= r * r) offs.push([dx, dy]);
+  return offs;
+}
+
+function dilate(m, w, h, r) {
+  const offs = diskOffsets(r), out = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      if (!m[y * w + x]) continue;
+      for (const [dx, dy] of offs) {
+        const nx = x + dx, ny = y + dy;
+        if (nx >= 0 && nx < w && ny >= 0 && ny < h) out[ny * w + nx] = 1;
+      }
+    }
+  return out;
+}
+
+function erode(m, w, h, r) {
+  const offs = diskOffsets(r), out = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      let all = 1;
+      for (const [dx, dy] of offs) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || nx >= w || ny < 0 || ny >= h || !m[ny * w + nx]) { all = 0; break; }
+      }
+      out[y * w + x] = all;
+    }
+  return out;
+}
+
+const morphClose = (m, w, h, r) => erode(dilate(m, w, h, r), w, h, r);
+const morphOpen = (m, w, h, r) => dilate(erode(m, w, h, r), w, h, r);
+
+/**
+ * Chamfer distance transform, the 5x5 weights OpenCV uses for DIST_L2.
+ * Each pixel ends up holding its distance to the nearest zero.
+ */
+function distanceTransform(m, w, h) {
+  const A = 1.0, B = 1.4, C = 2.1969;
+  const INF = 1e9;
+  const d = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) d[i] = m[i] ? INF : 0;
+  const at = (x, y) => (x < 0 || x >= w || y < 0 || y >= h ? INF : d[y * w + x]);
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      if (!m[y * w + x]) continue;
+      let v = d[y * w + x];
+      v = Math.min(v, at(x - 1, y) + A, at(x, y - 1) + A,
+                      at(x - 1, y - 1) + B, at(x + 1, y - 1) + B,
+                      at(x - 2, y - 1) + C, at(x + 2, y - 1) + C,
+                      at(x - 1, y - 2) + C, at(x + 1, y - 2) + C);
+      d[y * w + x] = v;
+    }
+  for (let y = h - 1; y >= 0; y--)
+    for (let x = w - 1; x >= 0; x--) {
+      if (!m[y * w + x]) continue;
+      let v = d[y * w + x];
+      v = Math.min(v, at(x + 1, y) + A, at(x, y + 1) + A,
+                      at(x + 1, y + 1) + B, at(x - 1, y + 1) + B,
+                      at(x + 2, y + 1) + C, at(x - 2, y + 1) + C,
+                      at(x + 1, y + 2) + C, at(x - 1, y + 2) + C);
+      d[y * w + x] = v;
+    }
+  return d;
+}
+
+function peaks(mask, w, h, geom, minR, gate) {
+  const dt = distanceTransform(mask, w, h);
+  const work = Float32Array.from(dt);
+  const found = [];
+
+  for (let iter = 0; iter < MAX_CANDIDATES; iter++) {
+    let bi = -1, bv = 0;
+    for (let i = 0; i < work.length; i++) if (work[i] > bv) { bv = work[i]; bi = i; }
+    if (bi < 0 || bv < minR) break;
+    const u = bi % w, v = Math.floor(bi / w), r = bv;
+    suppress(work, w, h, u, v, r * 1.4);
+
+    // size gate first: cheapest, and it removes tape before the pixel work
+    let sizeScore = 1.0;
+    if (gate) {
+      const centre = geom.solve(geom.cx, v);
+      if (centre !== null && centre.rangeIn <= GATE_MAX_RANGE_IN) {
+        const exp = geom.expectedRadiusPx(v);
+        if (exp === null || exp <= 0) continue;
+        const ratio = r / exp;
+        if (ratio < SIZE_GATE_LO || ratio > SIZE_GATE_HI) continue;
+        sizeScore = Math.exp(-((ratio - 1) ** 2) / 0.5);
+      }
+    }
+
+    const shape = shapeTest(mask, w, h, u, v, r);
+    if (!shape) continue;
+    found.push({ u, v, r, fill: shape.fill, sizeScore });
+  }
+  return found;
+}
+
+function suppress(work, w, h, cu, cv, rad) {
+  const r2 = rad * rad;
+  const x0 = Math.max(0, Math.floor(cu - rad)), x1 = Math.min(w - 1, Math.ceil(cu + rad));
+  const y0 = Math.max(0, Math.floor(cv - rad)), y1 = Math.min(h - 1, Math.ceil(cv + rad));
+  for (let y = y0; y <= y1; y++)
+    for (let x = x0; x <= x1; x++)
+      if ((x - cu) ** 2 + (y - cv) ** 2 <= r2) work[y * w + x] = 0;
+}
+
+/**
+ * Fill plus a DIRECTIONAL ring test.
+ *
+ * Not a scalar average: a ball touching a tape line or resting against
+ * another ball has a partly filled ring, and so does a peak sitting inside a
+ * large blob of the same colour. They differ in SHAPE. A ball has to be free
+ * in most directions; a blob enclosed on every side fails.
+ */
+function shapeTest(mask, w, h, cu, cv, r) {
+  const R = Math.ceil(r * 1.7) + 1;
+  const x0 = Math.max(0, cu - R), x1 = Math.min(w - 1, cu + R);
+  const y0 = Math.max(0, cv - R), y1 = Math.min(h - 1, cv + R);
+  const r2 = r * r, ring2 = (1.7 * r) ** 2;
+
+  let inside = 0, insideSet = 0;
+  const occupied = new Float64Array(RING_SECTORS);
+  const total = new Float64Array(RING_SECTORS);
+
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const dx = x - cu, dy = y - cv, d2 = dx * dx + dy * dy;
+      const on = mask[y * w + x];
+      if (d2 <= r2) { inside++; if (on) insideSet++; continue; }
+      if (d2 > ring2) continue;
+      let sec = Math.floor(((Math.atan2(dy, dx) + Math.PI) * RING_SECTORS) / (2 * Math.PI));
+      if (sec < 0) sec = 0;
+      if (sec >= RING_SECTORS) sec = RING_SECTORS - 1;
+      total[sec]++;
+      if (on) occupied[sec]++;
+    }
+  }
+  if (!inside) return null;
+  const fill = insideSet / inside;
+  if (fill < FILL_MIN) return null;
+
+  let used = 0, free = 0;
+  for (let s = 0; s < RING_SECTORS; s++) {
+    if (!total[s]) continue;
+    used++;
+    if (occupied[s] / total[s] < RING_SECTOR_FULL) free++;
+  }
+  if (!used || free / used < RING_FREE_MIN) return null;
+  return { fill };
+}
+
+
+// ===== src/pursuit.js ==============================================
+// Port of BallPursuit.java.
+//
+// One deliberate difference: update() takes dt explicitly instead of reading
+// a clock. The robot uses System.nanoTime(); a simulator needs to step at a
+// fixed rate and replay identically, so time is an argument here.
+//
+// The shape of this controller is driven by one hardware fact: the camera
+// cannot see a ball closer than about 10 inches, because it drops below the
+// bottom of the frame. So capture CANNOT be detected by a range threshold --
+// there is no number the camera can report. Instead the controller commits
+// and runs the last leg open loop.
+
+function defaultParams() {
+  return {
+    standoffIn: 8.0,
+
+    // Nearest range the camera can report. Closer than this there are no
+    // detections at all, only silence. At the calibrated mount (lens 11.7 in
+    // up, 25.9 deg down) that is 9.9 in. Recompute if the camera is re-aimed:
+    //   blind = (lensHeight - ballRadius) / tan(pitch + 20.17 deg)
+    cameraBlindIn: 9.9,
+
+    // Commit point. MUST be comfortably greater than cameraBlindIn, or the
+    // ball disappears at the same instant this phase begins and the robot
+    // never learns it got close.
+    blindApproachIn: 14.0,
+
+    // The final run, open loop.
+    blindDrivePower: 0.22,
+    blindDriveSeconds: 0.9,
+
+    aimToleranceDeg: 6.0,
+
+    kTurn: 0.022,
+    kDrive: 0.030,
+    kStrafe: 0.020,
+
+    // Breakaway powers. A proportional term alone goes to zero as the error
+    // does, and long before that it drops under the power needed to move the
+    // robot -- so it stops short with a standing error and cannot tell.
+    // Strafing a mecanum costs more than driving it.
+    kTurnMin: 0.08,
+    kDriveMin: 0.10,
+    kStrafeMin: 0.12,
+
+    // Deadbands. A breakaway power with no deadband is a limit cycle: apply
+    // the minimum, overshoot through zero, apply it the other way, hunt
+    // forever. Inside these the output is exactly zero.
+    turnDeadbandDeg: 1.5,
+    driveDeadbandIn: 1.0,
+    strafeDeadbandIn: 1.0,
+
+    maxTurn: 0.45,
+    maxDrive: 0.55,
+    maxStrafe: 0.35,
+
+    slewPerSec: 3.0,
+    useStrafe: true,
+  };
+}
+
+class BallPursuit {
+  constructor(params = defaultParams()) {
+    this.p = params;
+    this.reset();
+  }
+
+  reset() {
+    this.lastForward = 0;
+    this.lastStrafe = 0;
+    this.lastTurn = 0;
+    this.committed = false;
+    this.sinceCommit = 0;
+    this.rangeAtCommit = 0;
+  }
+
+  /** True once committed to the final run; losing the ball is then expected. */
+  isCommitted() { return this.committed; }
+
+  /**
+   * @param {{rangeIn:number, lateralIn:number, txDeg:number}|null} t
+   * @param {number} dt seconds since the last call
+   */
+  update(t, dt) {
+    const p = this.p;
+    const out = { forward: 0, strafe: 0, turn: 0, aimed: false, captured: false };
+
+    // --- committed: the final run, open loop ------------------------
+    // The camera is ignored from here. The ball is about to pass under the
+    // blind radius and stop being reported, and that silence is normal.
+    if (this.committed) {
+      this.sinceCommit += dt;
+      if (this.sinceCommit >= p.blindDriveSeconds) {
+        out.captured = true;
+        return this._slew(out, dt);
+      }
+      out.forward = p.blindDrivePower;
+      return this._slew(out, dt);
+    }
+
+    if (!t) return this._slew(out, dt);
+
+    out.aimed = Math.abs(t.txDeg) <= p.aimToleranceDeg;
+    const rangeError = t.rangeIn - p.standoffIn;
+
+    if (t.rangeIn <= p.blindApproachIn) {
+      this.committed = true;
+      this.sinceCommit = 0;
+      this.rangeAtCommit = t.rangeIn;
+      out.forward = p.blindDrivePower;
+      return this._slew(out, dt);
+    }
+
+    out.turn = command(-p.kTurn * t.txDeg, t.txDeg, p.turnDeadbandDeg,
+                       p.kTurnMin, p.maxTurn);
+
+    // Scaled down while badly misaimed, so it arcs in rather than driving past.
+    const aimScale = Math.max(0.15, 1 - Math.abs(t.txDeg) / (3 * p.aimToleranceDeg));
+    out.forward = command(p.kDrive * rangeError * aimScale, rangeError,
+                          p.driveDeadbandIn, p.kDriveMin, p.maxDrive);
+
+    if (p.useStrafe) {
+      out.strafe = command(p.kStrafe * t.lateralIn, t.lateralIn,
+                           p.strafeDeadbandIn, p.kStrafeMin, p.maxStrafe);
+    }
+    return this._slew(out, dt);
+  }
+
+  _slew(out, dt) {
+    const step = this.p.slewPerSec * Math.min(Math.max(dt, 0), 0.1);
+    this.lastForward = ramp(this.lastForward, out.forward, step);
+    this.lastStrafe = ramp(this.lastStrafe, out.strafe, step);
+    this.lastTurn = ramp(this.lastTurn, out.turn, step);
+    out.forward = this.lastForward;
+    out.strafe = this.lastStrafe;
+    out.turn = this.lastTurn;
+    return out;
+  }
+}
+
+/** Proportional term plus a breakaway minimum, with a deadband. */
+function command(raw, error, deadband, min, max) {
+  if (Math.abs(error) < deadband) return 0;
+  const v = raw + Math.sign(raw) * min;
+  return Math.max(-max, Math.min(max, v));
+}
+
+function ramp(from, to, step) {
+  const d = to - from;
+  if (d > step) return from + step;
+  if (d < -step) return from - step;
+  return to;
+}
+
+
+// ===== src/robot.js ================================================
+// Kinematic mecanum robot.
+//
+// Not a dynamics model -- no mass, no wheel slip. It models the one physical
+// effect the controller is actually shaped around: STATIC FRICTION. Below a
+// breakaway power the robot does not move at all, however long you ask.
+//
+// That matters because it is the bug the breakaway minimums exist to fix. Set
+// kDriveMin to 0 in the pursuit params and this model will reproduce the
+// original failure: the robot creeps to a halt with a standing error and the
+// controller has no way to notice. A frictionless model would hide it.
+
+function defaultChassis() {
+  return {
+    // Full-power speeds. Measure these on the real robot to make the sim's
+    // timing meaningful; the defaults are a plausible FTC mecanum.
+    maxForwardIps: 60.0,
+    maxStrafeIps: 45.0,       // strafing a mecanum is slower than driving it
+    maxTurnDps: 220.0,
+
+    // Power below which nothing moves. The reason kDriveMin and friends exist.
+    breakawayForward: 0.09,
+    breakawayStrafe: 0.11,
+    breakawayTurn: 0.07,
+
+    // Where the camera sits relative to robot centre, inches.
+    cameraForwardIn: 7.0,
+    cameraLateralIn: 0.0,
+  };
+}
+
+class Robot {
+  constructor(chassis = defaultChassis(), pose = { x: 0, y: 0, headingRad: 0 }) {
+    this.c = chassis;
+    this.pose = { ...pose };
+  }
+
+  /**
+   * Advance one tick.
+   * @param {{forward:number, strafe:number, turn:number}} power robot-centric
+   * @param {number} dt seconds
+   */
+  step(power, dt) {
+    const c = this.c;
+    const f = deadStart(power.forward, c.breakawayForward);
+    const s = deadStart(power.strafe, c.breakawayStrafe);
+    const r = deadStart(power.turn, c.breakawayTurn);
+
+    const vf = f * c.maxForwardIps;
+    const vs = s * c.maxStrafeIps;
+    const w = (r * c.maxTurnDps * Math.PI) / 180;
+
+    // robot frame -> field frame
+    const h = this.pose.headingRad;
+    this.pose.x += (vf * Math.cos(h) - vs * Math.sin(h)) * dt;
+    this.pose.y += (vf * Math.sin(h) + vs * Math.cos(h)) * dt;
+    this.pose.headingRad = wrap(h + w * dt);
+    return this.pose;
+  }
+
+  /** Camera position in field coordinates. */
+  cameraPose() {
+    const h = this.pose.headingRad;
+    return {
+      x: this.pose.x + this.c.cameraForwardIn * Math.cos(h) - this.c.cameraLateralIn * Math.sin(h),
+      y: this.pose.y + this.c.cameraForwardIn * Math.sin(h) + this.c.cameraLateralIn * Math.cos(h),
+      headingRad: h,
+    };
+  }
+
+  /**
+   * A field point as the CAMERA sees it.
+   * @returns {{forwardIn:number, lateralIn:number}} forward + ahead, lateral + left
+   */
+  worldToCamera(x, y) {
+    const cam = this.cameraPose();
+    const dx = x - cam.x, dy = y - cam.y;
+    const ch = Math.cos(-cam.headingRad), sh = Math.sin(-cam.headingRad);
+    return { forwardIn: dx * ch - dy * sh, lateralIn: dx * sh + dy * ch };
+  }
+}
+
+/** Static friction: below breakaway, nothing happens. */
+function deadStart(power, breakaway) {
+  return Math.abs(power) < breakaway ? 0 : power;
+}
+
+function wrap(a) {
+  while (a > Math.PI) a -= 2 * Math.PI;
+  while (a < -Math.PI) a += 2 * Math.PI;
+  return a;
+}
+
+
+// ===== src/sim.js ==================================================
+// Main loop: render what the camera would see, run the real detector over
+// those pixels, feed the result to the real pursuit controller, drive the
+// robot, repeat. Nothing here fakes a detection.
+
+
+
+
+
+const CAM_W = 640, CAM_H = 480;
+const FIELD_IN = 144;                      // 12 ft, drawn on a 520 px canvas
+
+const cam = document.getElementById("cam").getContext("2d", { willReadFrequently: true });
+const maskCv = document.getElementById("mask");
+const maskCtx = maskCv.getContext("2d");
+const field = document.getElementById("field").getContext("2d");
+
+const mount = { heightIn: 11.7, pitchDeg: 25.9 };
+const params = defaultParams();
+const chassis = defaultChassis();
+
+let robot = new Robot(chassis, { x: -40, y: 0, headingRad: 0 });
+let pursuit = new BallPursuit(params);
+let balls = [
+  { x: 20, y: 6, color: "yellow" },
+  { x: 34, y: -18, color: "blue" },
+  { x: 46, y: 20, color: "red" },
+];
+const tape = [{ from: [-60, -70], to: [120, -70], widthIn: 2 }];
+let running = false, lastT = 0, last = null;
+
+// ------------------------------------------------------------------ loop
+
+function tick(now) {
+  const dt = lastT ? Math.min((now - lastT) / 1000, 0.05) : 0.02;
+  lastT = now;
+
+  const geom = new Geometry(CAM_W, CAM_H, mount.heightIn, mount.pitchDeg);
+
+  // Balls, as the camera sees them from where the robot currently is.
+  const world = {
+    balls: balls
+      .map((b) => ({ ...robot.worldToCamera(b.x, b.y), color: b.color }))
+      .filter((b) => b.forwardIn > 0),
+    tape: tape.map((t) => ({
+      from: Object.values(robot.worldToCamera(t.from[0], t.from[1])),
+      to: Object.values(robot.worldToCamera(t.to[0], t.to[1])),
+      widthIn: t.widthIn,
+    })),
+  };
+  renderCameraView(cam, geom, world);
+
+  const image = cam.getImageData(0, 0, CAM_W, CAM_H);
+  const det = detect(image, {
+    camHeightIn: mount.heightIn,
+    camPitchDeg: mount.pitchDeg,
+    wantedColor: document.getElementById("wanted").value || null,
+    sizeGate: document.getElementById("gate").checked,
+  });
+  last = det;
+
+  drawDetections(det);
+  drawMask(det);
+
+  if (running && document.getElementById("chase").checked) {
+    const t = det.best
+      ? { rangeIn: det.best.rangeIn, lateralIn: det.best.lateralIn, txDeg: det.best.txDeg }
+      : null;
+    const o = pursuit.update(t, dt);
+    robot.step(o, dt);
+    if (o.captured) {
+      // Collect it: remove whatever is closest to the robot, then look again.
+      const cm = robot.cameraPose();
+      let bi = -1, bd = 1e9;
+      balls.forEach((b, i) => {
+        const d = Math.hypot(b.x - cm.x, b.y - cm.y);
+        if (d < bd) { bd = d; bi = i; }
+      });
+      if (bi >= 0 && bd < 18) balls.splice(bi, 1);
+      pursuit.reset();
+    }
+  }
+
+  drawField();
+  writeTelemetry(det);
+  requestAnimationFrame(tick);
+}
+
+// --------------------------------------------------------------- drawing
+
+function drawDetections(det) {
+  const k = CAM_W / det.width;             // detector worked at PROC_W
+  cam.lineWidth = 2;
+  for (const b of det.balls) {
+    cam.strokeStyle = b === det.best ? "#fff" : "rgba(255,255,255,.55)";
+    cam.beginPath();
+    cam.arc(b.u * k, b.v * k, b.r * k, 0, Math.PI * 2);
+    cam.stroke();
+    cam.fillStyle = "#fff";
+    cam.font = "12px ui-monospace, monospace";
+    cam.fillText(`${b.color[0].toUpperCase()} ${b.rangeIn.toFixed(0)}"`,
+                 b.u * k - b.r * k, b.v * k - b.r * k - 5);
+  }
+  // crosshair
+  cam.strokeStyle = "rgba(0,255,120,.9)";
+  cam.beginPath();
+  cam.moveTo(CAM_W / 2 - 10, CAM_H / 2); cam.lineTo(CAM_W / 2 + 10, CAM_H / 2);
+  cam.moveTo(CAM_W / 2, CAM_H / 2 - 10); cam.lineTo(CAM_W / 2, CAM_H / 2 + 10);
+  cam.stroke();
+}
+
+function drawMask(det) {
+  maskCv.width = det.width; maskCv.height = det.height;
+  const img = maskCtx.createImageData(det.width, det.height);
+  const tint = { red: [255, 70, 70], blue: [90, 130, 255], yellow: [255, 220, 60] };
+  for (const [color, m] of Object.entries(det.masks)) {
+    const c = tint[color];
+    for (let i = 0; i < m.length; i++) {
+      if (!m[i]) continue;
+      img.data[i * 4] = c[0]; img.data[i * 4 + 1] = c[1];
+      img.data[i * 4 + 2] = c[2]; img.data[i * 4 + 3] = 255;
+    }
+  }
+  for (let i = 0; i < det.width * det.height; i++) if (!img.data[i * 4 + 3]) img.data[i * 4 + 3] = 255;
+  maskCtx.putImageData(img, 0, 0);
+}
+
+const toPx = (v) => (v / FIELD_IN + 0.5) * 520;
+
+function drawField() {
+  const g = field;
+  g.clearRect(0, 0, 520, 520);
+  g.strokeStyle = "rgba(128,128,128,.25)";
+  for (let i = -72; i <= 72; i += 24) {
+    g.beginPath(); g.moveTo(toPx(i), 0); g.lineTo(toPx(i), 520); g.stroke();
+    g.beginPath(); g.moveTo(0, toPx(i)); g.lineTo(520, toPx(i)); g.stroke();
+  }
+
+  // the camera's field of view on the floor
+  const cm = robot.cameraPose();
+  const geom = new Geometry(CAM_W, CAM_H, mount.heightIn, mount.pitchDeg);
+  const near = geom.nearestVisibleIn(), far = 100;
+  const halfFov = (Math.atan2(CAM_W / 2, geom.fx) * 180) / Math.PI;
+  g.fillStyle = "rgba(90,160,240,.13)";
+  g.beginPath();
+  for (const [d, dir] of [[near, 1], [far, -1]]) {
+    for (let a = -halfFov; a <= halfFov; a += 2) {
+      const ang = cm.headingRad + (a * Math.PI) / 180;
+      const x = cm.x + d * Math.cos(ang), y = cm.y + d * Math.sin(ang);
+      g.lineTo(toPx(x), toPx(-y));
+    }
+  }
+  g.closePath(); g.fill();
+
+  for (const b of balls) {
+    g.fillStyle = `rgb(${BALL_RGB[b.color].join(",")})`;
+    g.beginPath(); g.arc(toPx(b.x), toPx(-b.y), 6, 0, Math.PI * 2); g.fill();
+  }
+
+  // robot
+  g.save();
+  g.translate(toPx(robot.pose.x), toPx(-robot.pose.y));
+  g.rotate(-robot.pose.headingRad);
+  g.fillStyle = "rgba(120,130,145,.85)";
+  const s = (18 / FIELD_IN) * 520;
+  g.fillRect(-s / 2, -s / 2, s, s);
+  g.fillStyle = "#fff";
+  g.fillRect(s / 2 - 4, -2, 6, 4);
+  g.restore();
+}
+
+function writeTelemetry(det) {
+  const p = det.llpython;
+  const names = ["valid", "colour", "tx deg", "ty deg", "range in", "lateral in", "radius px", "count"];
+  const body = p.map((v, i) =>
+    `<tr><td class="k">${names[i]}</td><td>${i === 0 || i === 1 || i === 7 ? v : v.toFixed(2)}</td></tr>`
+  ).join("");
+  document.querySelector("#out tbody").innerHTML =
+    body + `<tr><td class="k">committed</td><td>${pursuit.isCommitted()}</td></tr>`;
+}
+
+// --------------------------------------------------------------- controls
+
+function slider(host, label, obj, key, min, max, step, suffix = "") {
+  const d = document.createElement("div");
+  d.className = "slider";
+  d.innerHTML = `<div class="lab"><span>${label}</span><b>${obj[key]}${suffix}</b></div>`;
+  const r = document.createElement("input");
+  r.type = "range"; r.min = min; r.max = max; r.step = step; r.value = obj[key];
+  r.oninput = () => {
+    obj[key] = parseFloat(r.value);
+    d.querySelector("b").textContent = obj[key] + suffix;
+    updateBlind();
+  };
+  d.appendChild(r);
+  host.appendChild(d);
+}
+
+// Camera and ball are the two things that make this simulate SOMEONE ELSE'S
+// robot rather than ours. Both change every distance, so they come first.
+const camSel = document.getElementById("camera");
+for (const [k, c] of Object.entries(CAMERAS)) {
+  camSel.insertAdjacentHTML("beforeend", `<option value="${k}">${c.label}</option>`);
+}
+camSel.onchange = () => {
+  const c = setCamera(camSel.value);
+  document.getElementById("camnote").textContent = c.note;
+  updateBlind();
+};
+
+const ballSel = document.getElementById("ball");
+for (const [k, b] of Object.entries(BALLS)) {
+  ballSel.insertAdjacentHTML("beforeend", `<option value="${b.diameterIn}">${b.label}</option>`);
+}
+ballSel.onchange = () => { setBallDiameter(parseFloat(ballSel.value)); updateBlind(); };
+
+document.getElementById("camnote").textContent = CAMERAS[camSel.value].note;
+
+const mountHost = document.getElementById("mount");
+slider(mountHost, "lens height", mount, "heightIn", 4, 20, 0.1, " in");
+slider(mountHost, "pitch below horizontal", mount, "pitchDeg", 0, 45, 0.1, " deg");
+
+const gainHost = document.getElementById("gains");
+for (const [k, lo, hi, st] of [
+  ["kTurn", 0, 0.08, 0.001], ["kDrive", 0, 0.08, 0.001],
+  ["kTurnMin", 0, 0.25, 0.01], ["kDriveMin", 0, 0.25, 0.01],
+  ["blindApproachIn", 8, 30, 0.5], ["blindDriveSeconds", 0, 3, 0.05],
+]) slider(gainHost, k, params, k, lo, hi, st);
+
+function updateBlind() {
+  const g = new Geometry(CAM_W, CAM_H, mount.heightIn, mount.pitchDeg);
+  const b = g.nearestVisibleIn();
+  const ok = params.blindApproachIn > b + 2;
+  document.getElementById("blind").innerHTML =
+    `Nearest visible ball <b>${b.toFixed(1)} in</b>. ` +
+    `Commit at ${params.blindApproachIn.toFixed(1)} in — ` +
+    (ok ? `<span class="good">clear of it</span>.`
+        : `<span class="bad">too close; the ball vanishes as the run begins</span>.`);
+  params.cameraBlindIn = b;
+}
+
+document.getElementById("run").onclick = (e) => {
+  running = !running;
+  e.target.textContent = running ? "Pause" : "Start";
+  e.target.classList.toggle("primary", !running);
+  lastT = 0;
+};
+document.getElementById("reset").onclick = () => {
+  robot = new Robot(chassis, { x: -40, y: 0, headingRad: 0 });
+  pursuit = new BallPursuit(params);
+  balls = [
+    { x: 20, y: 6, color: "yellow" },
+    { x: 34, y: -18, color: "blue" },
+    { x: 46, y: 20, color: "red" },
+  ];
+};
+
+document.getElementById("field").addEventListener("click", (e) => {
+  const r = e.target.getBoundingClientRect();
+  const x = ((e.clientX - r.left) / r.width - 0.5) * FIELD_IN;
+  const y = -(((e.clientY - r.top) / r.height - 0.5) * FIELD_IN);
+  if (e.shiftKey) {
+    const cs = ["yellow", "blue", "red"];
+    balls.push({ x, y, color: cs[balls.length % 3] });
+  } else if (balls.length) {
+    let bi = 0, bd = 1e9;
+    balls.forEach((b, i) => {
+      const d = Math.hypot(b.x - x, b.y - y);
+      if (d < bd) { bd = d; bi = i; }
+    });
+    balls[bi].x = x; balls[bi].y = y;
+  }
+});
+
+updateBlind();
+requestAnimationFrame(tick);
+
+</script>
+</body>
+</html>

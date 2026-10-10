@@ -13,7 +13,7 @@
 //      in most directions, while a blob inside a wall is enclosed and fails
 //   4. a ground-plane size gate, once the mounting numbers are calibrated
 
-import { Geometry, BALL_DIAMETER_IN } from "./geometry.js";
+import { Geometry } from "./geometry.js";
 import { THRESHOLDS, COLOR_ID } from "./thresholds.js";
 
 export const PROC_W = 320;          // detection runs downscaled; angles stay exact

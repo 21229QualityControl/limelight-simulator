@@ -2,7 +2,7 @@
 // those pixels, feed the result to the real pursuit controller, drive the
 // robot, repeat. Nothing here fakes a detection.
 
-import { Geometry } from "./geometry.js";
+import { Geometry, CAMERAS, BALLS, setCamera, setBallDiameter } from "./geometry.js";
 import { renderCameraView, BALL_RGB } from "./render.js";
 import { detect, PROC_W } from "./detector.js";
 import { BallPursuit, defaultParams } from "./pursuit.js";
@@ -196,6 +196,26 @@ function slider(host, label, obj, key, min, max, step, suffix = "") {
   d.appendChild(r);
   host.appendChild(d);
 }
+
+// Camera and ball are the two things that make this simulate SOMEONE ELSE'S
+// robot rather than ours. Both change every distance, so they come first.
+const camSel = document.getElementById("camera");
+for (const [k, c] of Object.entries(CAMERAS)) {
+  camSel.insertAdjacentHTML("beforeend", `<option value="${k}">${c.label}</option>`);
+}
+camSel.onchange = () => {
+  const c = setCamera(camSel.value);
+  document.getElementById("camnote").textContent = c.note;
+  updateBlind();
+};
+
+const ballSel = document.getElementById("ball");
+for (const [k, b] of Object.entries(BALLS)) {
+  ballSel.insertAdjacentHTML("beforeend", `<option value="${b.diameterIn}">${b.label}</option>`);
+}
+ballSel.onchange = () => { setBallDiameter(parseFloat(ballSel.value)); updateBlind(); };
+
+document.getElementById("camnote").textContent = CAMERAS[camSel.value].note;
 
 const mountHost = document.getElementById("mount");
 slider(mountHost, "lens height", mount, "heightIn", 4, 20, 0.1, " in");
